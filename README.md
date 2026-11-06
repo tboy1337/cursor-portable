@@ -1,6 +1,6 @@
 # Cursor Portable
 
-Cursor Portable downloads the official Cursor IDE, the CLI, or both on this computer and copies that build onto a removable drive. The Cursor installation already on this computer is not modified.
+Cursor Portable downloads the official Cursor IDE, the CLI, or both on your computer and copies that build onto a removable drive.
 
 This repository does not contain Cursor. The wizard downloads a relocatable CPython 3.14 with pip onto the drive and copies this tool there. The drive is for the person who created it, under that person's own Cursor account. This tool does not protect sign-in tokens. Windows may bind them to the account that created them, and another computer may have to sign in again.
 
