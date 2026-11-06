@@ -72,72 +72,11 @@ jobs:
           --after-file pyproject.toml
           --github-output "$GITHUB_OUTPUT"
 
-  pack:
-    name: Pack ${{ matrix.system }} ${{ matrix.arch }}
+  publish:
     needs: release-check
     if: >-
       needs.release-check.result == 'success' &&
       needs.release-check.outputs.release == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            system: windows
-            arch: x64
-          - os: windows-latest
-            system: windows
-            arch: arm64
-          - os: ubuntu-latest
-            system: linux
-            arch: x64
-          - os: ubuntu-24.04-arm
-            system: linux
-            arch: arm64
-          - os: macos-latest
-            system: macos
-            arch: x64
-          - os: macos-latest
-            system: macos
-            arch: arm64
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          python-version: "3.13"
-      - name: Install
-        run: uv sync --extra dev
-      - name: Install pack tools
-        shell: bash
-        run: |
-          if [ "${{ matrix.system }}" = "windows" ]; then
-            choco install 7zip -y
-          elif [ "${{ matrix.system }}" = "linux" ]; then
-            sudo apt-get update
-            sudo apt-get install -y p7zip-full
-          else
-            brew install sevenzip
-          fi
-      - name: Pack
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          uv run python scripts/ci_pack.py
-          --system "${{ matrix.system }}"
-          --arch "${{ matrix.arch }}"
-          --output dist
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: pack-${{ matrix.system }}-${{ matrix.arch }}
-          path: dist/*
-
-  publish:
-    needs: [release-check, pack]
-    if: >-
-      needs.release-check.result == 'success' &&
-      needs.release-check.outputs.release == 'true' &&
-      needs.pack.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -148,17 +87,11 @@ jobs:
           python-version: "3.13"
       - name: Install
         run: uv sync --extra dev
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-        with:
-          pattern: pack-*
-          path: packs
-          merge-multiple: true
-      - name: Publish the setup
+      - name: Publish the source release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: >-
           uv run python scripts/ci_publish.py
-          --packs packs
           --version "${{ needs.release-check.outputs.version }}"
           --target "${{ github.sha }}"
