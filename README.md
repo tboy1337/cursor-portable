@@ -2,22 +2,9 @@
 
 Cursor Portable downloads the official Cursor IDE, the CLI, or both on this computer and copies that build onto a removable drive. The Cursor installation already on this computer is not modified.
 
-The published setup contains this tool and a relocatable CPython 3.13 with pip. It does not contain Cursor. The drive is for the person who created it, under that person's own Cursor account. This tool does not protect sign-in tokens. Windows may bind them to the account that created them, and another computer may have to sign in again.
+This repository does not contain Cursor. The wizard downloads a relocatable CPython 3.13 with pip onto the drive and copies this tool there. The drive is for the person who created it, under that person's own Cursor account. This tool does not protect sign-in tokens. Windows may bind them to the account that created them, and another computer may have to sign in again.
 
 The drive uses NTFS on Windows, APFS on macOS, and ext4 on Linux. It keeps that system's Cursor build, the relocatable CPython, and one launcher.
-
-## Published setup
-
-Download one file from [Releases](https://github.com/tboy1337/cursor-portable/releases):
-
-- `CursorPortableSetup-Windows-x64.exe`
-- `CursorPortableSetup-Windows-arm64.exe`
-- `CursorPortableSetup-macOS-x64.run`
-- `CursorPortableSetup-macOS-arm64.run`
-- `CursorPortableSetup-Linux-x64.run`
-- `CursorPortableSetup-Linux-arm64.run`
-
-Run that file. It opens the wizard.
 
 ## From this repository
 
@@ -53,7 +40,7 @@ The launcher copies the application to a local cache for that drive and points `
 
 Uninstall removes the cache, the PATH entry, and the shortcuts this tool created. The removable drive is left unchanged. Uninstall refuses to run while that Cursor session is still open.
 
-On macOS or Linux, `./CursorPortableSetup-….run uninstall` does that cleanup. On Windows, use the Uninstall button in the setup window. From this repository, run `uv run python -m cursor_portable uninstall`.
+Use the Uninstall button in the setup window, or run `uv run python -m cursor_portable uninstall`.
 
 ## Layout
 

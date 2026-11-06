@@ -1,6 +1,6 @@
 # Portable layout
 
-The published setup contains this tool and a relocatable Python. It does not contain Cursor. The wizard downloads the official build on the computer where it is run, then copies that build onto the stick. The stick is for the person who created it.
+The wizard downloads the official Cursor build and a relocatable Python on the computer where it runs, then copies that build onto the stick. The stick is for the person who created it.
 
 
 

@@ -2,11 +2,9 @@
 
 The Qt wizard collects choices and calls into modules that do not import Qt.
 
-- `download` resolves official HTTPS URLs, refuses a non-HTTPS redirect, and checks size. SHA-256 is checked when a digest is published. Pack jobs require a checksum for CPython and the 7-Zip extra archive. The CLI install script is read as text and is not executed. Cursor itself is downloaded when a person runs the wizard, not when a release is built.
+- `download` resolves official HTTPS URLs, refuses a non-HTTPS redirect, and checks size. SHA-256 is checked when a digest is published. Pack jobs require a checksum for CPython and the 7-Zip extra archive. The CLI install script is read as text and is not executed. Cursor itself is downloaded when a person runs the wizard.
 - `repack` strips `product.json` `target` on the copy that person downloaded, writes launchers, and builds a 7-Zip self-extractor that contains this tool and Python. macOS and Linux get a bash stub with a bundled extractor because 7-Zip has no self-extractor for those systems.
 - `disk` refuses system and non-removable volumes before it builds a format or repair command. A Windows stick uses NTFS, a macOS stick uses APFS, and a Linux stick uses ext4. Format and repair use the host's own tools, and a host that cannot write the target filesystem is refused.
 - `profile` copies an allowlist and will not rewrite `settings.json` when it is not plain JSON.
 - `launcher` keeps the session profile on the internal disk, beside the cached executable, and copies it back to the stick on a timer, on exit, and after a crash. A session file lets the next start drop the PATH entry and restore `~/.cursor`. On Windows that process has no console window, so closing a command window cannot end the session.
 - `host` deletes only the local cache, the PATH segment, and shortcuts this tool created. It also restores `~/.cursor` when the session link belongs to this tool.
-
-A manual workflow publishes the tool setup for each operating system and CPU. The release is tagged with this package's version. The archive does not contain Cursor.
