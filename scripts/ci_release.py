@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Decide whether a push to main should publish a GitHub release.
 
-A release is published only when ``[project].version`` in ``pyproject.toml``
-changes. That file is the only version to edit.
+A release is published when ``[project].version`` in ``pyproject.toml``
+changes, and when that version still has no GitHub release. That file is
+the only version to edit.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ def choose_release(
     current: str,
     *,
     new_history: bool,
+    already_released: bool = True,
 ) -> ReleaseDecision | Failure:
     """Return a publish decision for the previous and current versions."""
     if not current:
@@ -43,13 +45,47 @@ def choose_release(
     if new_history:
         LOGGER.info("Skipping release; this push has no previous commit")
         return ReleaseDecision(False, current, "no previous commit")
-    if previous == current:
+    if previous == current and already_released:
         LOGGER.info("Skipping release; version %s is unchanged", current)
         return ReleaseDecision(False, current, "unchanged")
     if RELEASE_VERSION.fullmatch(current) is None:
         return Failure("version", f"Refusing version {current}")
+    if previous == current:
+        LOGGER.info("Releasing %s; GitHub has no release for it", current)
+        return ReleaseDecision(True, current, "unreleased")
     LOGGER.info("Releasing %s; previous version was %s", current, previous)
     return ReleaseDecision(True, current, "changed")
+
+
+def github_release_exists(version: str) -> bool | Failure:
+    """Return whether GitHub already has a release tagged ``version``."""
+    LOGGER.info("Checking GitHub release %s", version)
+    command = ["gh", "release", "view", version, "--json", "tagName"]
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return Failure("release", f"gh release view timed out for {version}")
+    except OSError as exc:
+        return Failure("release", f"Could not run gh: {exc}")
+    if completed.returncode == 0:
+        LOGGER.info("GitHub release %s already exists", version)
+        return True
+    detail = "\n".join(
+        part.strip() for part in (completed.stderr, completed.stdout) if part.strip()
+    )
+    if "release not found" in detail.casefold():
+        LOGGER.info("GitHub release %s does not exist", version)
+        return False
+    LOGGER.error("gh release view failed: %s", detail)
+    return Failure("release", detail or f"gh release view failed for {version}")
 
 
 def version_in_text(text: str, label: str) -> str | Failure:
@@ -144,7 +180,18 @@ def decide(before: str, after_file: Path) -> ReleaseDecision | Failure:
     if isinstance(previous, Failure):
         return previous
     new_history, previous_version = previous
-    return choose_release(previous_version, current, new_history=new_history)
+    already_released = True
+    if previous_version == current and not new_history:
+        found = github_release_exists(current)
+        if isinstance(found, Failure):
+            return found
+        already_released = found
+    return choose_release(
+        previous_version,
+        current,
+        new_history=new_history,
+        already_released=already_released,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

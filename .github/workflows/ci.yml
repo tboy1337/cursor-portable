@@ -42,7 +42,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
-  # Publish only after a push to main changes [project].version in pyproject.toml.
+  # Publish after a push to main when the pyproject version changed, or when
+  # that version still has no GitHub release.
   release-check:
     needs: quality
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -63,6 +64,7 @@ jobs:
         id: version
         env:
           BEFORE_SHA: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: >-
           uv run python scripts/ci_release.py

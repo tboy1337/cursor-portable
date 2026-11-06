@@ -23,6 +23,7 @@ from scripts.ci_publish import main as publish_main
 from scripts.ci_release import (
     ReleaseDecision,
     choose_release,
+    github_release_exists,
     main as release_main,
     missing_pyproject,
     show_pyproject,
@@ -129,7 +130,7 @@ def _commit_pyproject(repo: Path, version: str, message: str) -> str:
 
 
 def test_release_follows_only_a_version_bump(
-    tmp_path: Path, monkeypatch: object
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -137,7 +138,7 @@ def test_release_follows_only_a_version_bump(
     previous = _commit_pyproject(repo, "1.0.0", "initial")
     _commit_pyproject(repo, "1.0.1", "bump")
     output = tmp_path / "github-output.txt"
-    monkeypatch.chdir(repo)  # type: ignore[attr-defined]
+    monkeypatch.chdir(repo)
     code = release_main(
         [
             "--before",
@@ -152,6 +153,11 @@ def test_release_follows_only_a_version_bump(
     text = output.read_text(encoding="utf-8")
     assert "release=true" in text
     assert "version=1.0.1" in text
+
+    def released(_version: str) -> bool:
+        return True
+
+    monkeypatch.setattr("scripts.ci_release.github_release_exists", released)
     same = tmp_path / "same.txt"
     head = _git(repo, "rev-parse", "HEAD")
     assert (
@@ -168,6 +174,28 @@ def test_release_follows_only_a_version_bump(
         == 0
     )
     assert "release=false" in same.read_text(encoding="utf-8")
+
+    def unreleased(_version: str) -> bool:
+        return False
+
+    monkeypatch.setattr("scripts.ci_release.github_release_exists", unreleased)
+    missing_release = tmp_path / "missing-release.txt"
+    assert (
+        release_main(
+            [
+                "--before",
+                head,
+                "--after-file",
+                "pyproject.toml",
+                "--github-output",
+                str(missing_release),
+            ]
+        )
+        == 0
+    )
+    missing_text = missing_release.read_text(encoding="utf-8")
+    assert "release=true" in missing_text
+    assert "version=1.0.1" in missing_text
     (repo / "pyproject.toml").write_text(_pyproject("1.2"), encoding="utf-8")
     assert (
         release_main(
@@ -184,6 +212,32 @@ def test_release_follows_only_a_version_bump(
     )
 
 
+def test_github_release_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    outcomes: dict[str, subprocess.CompletedProcess[str] | BaseException] = {
+        "1.0.1": subprocess.CompletedProcess([], 1, "", "release not found"),
+        "1.0.0": subprocess.CompletedProcess([], 0, '{"tagName":"1.0.0"}', ""),
+        "slow": subprocess.TimeoutExpired(["gh"], 60),
+        "absent": OSError("gh"),
+        "9.9.9": subprocess.CompletedProcess([], 1, "", "auth required"),
+    }
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert command == ["gh", "release", "view", command[3], "--json", "tagName"]
+        outcome = outcomes[command[3]]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr("scripts.ci_release.subprocess.run", run)
+    assert github_release_exists("1.0.1") is False
+    assert github_release_exists("1.0.0") is True
+    assert isinstance(github_release_exists("slow"), Failure)
+    assert isinstance(github_release_exists("absent"), Failure)
+    refused = github_release_exists("9.9.9")
+    assert isinstance(refused, Failure)
+    assert "auth required" in refused.message
+
+
 def test_release_decision_edges(tmp_path: Path) -> None:
     assert missing_pyproject("fatal: path 'pyproject.toml' does not exist in 'abc'")
     assert missing_pyproject(
@@ -193,6 +247,16 @@ def test_release_decision_edges(tmp_path: Path) -> None:
     unchanged = choose_release("1.0.0", "1.0.0", new_history=False)
     assert isinstance(unchanged, ReleaseDecision)
     assert unchanged.publish is False
+    pending = choose_release(
+        "1.0.0", "1.0.0", new_history=False, already_released=False
+    )
+    assert isinstance(pending, ReleaseDecision)
+    assert pending.publish is True
+    assert pending.version == "1.0.0"
+    assert isinstance(
+        choose_release("1.2", "1.2", new_history=False, already_released=False),
+        Failure,
+    )
     appeared = choose_release(None, "1.0.1", new_history=False)
     assert isinstance(appeared, ReleaseDecision)
     assert appeared.publish is True
