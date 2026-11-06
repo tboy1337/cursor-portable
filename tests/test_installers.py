@@ -18,7 +18,7 @@ from cursor_portable._version import (
 )
 from cursor_portable.failure import Failure
 from cursor_portable.install.acquire import copy_tool_package
-from scripts.ci_pack import _copy_package
+from scripts.ci_pack import _copy_package, _github_headers, cross_qt_command
 from scripts.ci_publish import main as publish_main
 from scripts.ci_release import (
     ReleaseDecision,
@@ -236,6 +236,29 @@ def test_github_release_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
     refused = github_release_exists("9.9.9")
     assert isinstance(refused, Failure)
     assert "auth required" in refused.message
+
+
+def test_cross_qt_install_is_only_for_windows_arm64(tmp_path: Path) -> None:
+    site = tmp_path / "site-packages"
+    assert cross_qt_command(site, "windows", "x64", uv="uv") is None
+    command = cross_qt_command(site, "windows", "arm64", uv="uv")
+    assert isinstance(command, list)
+    assert command[:3] == ["uv", "pip", "install"]
+    assert "aarch64-pc-windows-msvc" in command
+    assert "3.14" in command
+    assert str(site) in command
+    missing = cross_qt_command(site, "windows", "arm64", uv="")
+    assert isinstance(missing, Failure)
+
+
+def test_github_pack_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    assert not _github_headers()
+    monkeypatch.setenv("GH_TOKEN", "pack-token")
+    headers = _github_headers()
+    assert headers["Authorization"] == "Bearer pack-token"
+    assert headers["Accept"] == "application/vnd.github+json"
 
 
 def test_release_decision_edges(tmp_path: Path) -> None:

@@ -11,6 +11,7 @@ import subprocess
 import sys
 from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
+from urllib.request import Request
 
 import cursor_portable.__main__ as package_main
 from cursor_portable._version import __version__
@@ -310,15 +311,22 @@ def test_http_client(monkeypatch: object) -> None:
         def __exit__(self, *_args: object) -> bool:
             return False
 
-    monkeypatch.setattr(
-        "cursor_portable.download.http_client.urlopen",
-        lambda *_args, **_kwargs: Response(),
-    )
+    requests: list[Request] = []
+
+    def capture(request: Request, *_args: object, **_kwargs: object) -> Response:
+        requests.append(request)
+        return Response()
+
+    monkeypatch.setattr("cursor_portable.download.http_client.urlopen", capture)
     loaded = UrllibClient().get(
-        "https://downloads.cursor.com/CursorSetup.exe", timeout=1
+        "https://downloads.cursor.com/CursorSetup.exe",
+        timeout=1,
+        headers={"Authorization": "Bearer secret"},
     )
     assert not isinstance(loaded, Failure)
     assert loaded.body == b"exe"
+    assert requests[0].get_header("Authorization") == "Bearer secret"
+    assert requests[0].get_header("User-agent") == "cursor-portable"
 
     def raise_http(*_args: object, **_kwargs: object) -> object:
         raise HTTPError(

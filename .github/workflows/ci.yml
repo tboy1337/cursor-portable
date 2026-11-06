@@ -120,6 +120,8 @@ jobs:
             brew install sevenzip
           fi
       - name: Pack
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: >-
           uv run python scripts/ci_pack.py
           --system "${{ matrix.system }}"

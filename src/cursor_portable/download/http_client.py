@@ -33,12 +33,21 @@ class HttpClient(Protocol):
 class UrllibClient:
     """HTTPS client. Redirects are followed by urllib."""
 
-    def get(self, url: str, *, timeout: float) -> HttpResponse | Failure:
+    def get(
+        self,
+        url: str,
+        *,
+        timeout: float,
+        headers: Mapping[str, str] | None = None,
+    ) -> HttpResponse | Failure:
         """GET ``url`` and return the body."""
         LOGGER.info("GET %s", url)
         if not url.startswith("https://"):
             return Failure("http", f"Refusing non-HTTPS URL: {url}")
-        request = Request(url, headers={"User-Agent": "cursor-portable"})
+        request_headers = {"User-Agent": "cursor-portable"}
+        if headers:
+            request_headers.update(headers)
+        request = Request(url, headers=request_headers)
         try:
             with urlopen(request, timeout=timeout) as response:
                 status = getattr(response, "status", 200)

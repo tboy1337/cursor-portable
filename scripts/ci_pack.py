@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -31,8 +32,11 @@ from cursor_portable.repack.sfx import build_posix_sfx, build_windows_sfx
 PYTHON_RELEASE = (
     "https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest"
 )
-SFX_EXTRA = "https://www.7-zip.org/a/7z2409-extra.7z"
-SFX_SHA256 = "43ae97658d0fc5b4eec4d409d85f7bed74a80945fd5704333a3599e0bd79b5fc"
+SFX_SDK = "https://github.com/ip7z/7zip/releases/download/24.09/lzma2409.7z"
+SFX_SHA256 = "79b39f10b7b69eea293caa90c3e7ea07faf8f01f8ae9db1bb1b90c092375e5f3"
+# An x64 Windows runner cannot execute the arm64 interpreter it packs.
+_CROSS_PLATFORM = {("windows", "arm64"): "aarch64-pc-windows-msvc"}
+LOGGER = logging.getLogger(__name__)
 PYSIDE_REQUIREMENT = "pyside6==6.12.0"
 
 _HOST = {
@@ -144,7 +148,7 @@ def pack(system_name: str, arch: str, output: Path) -> int:
         outer = work / "outer"
         outer.mkdir()
         shutil.copytree(python_root, outer / "python")
-        _install_wizard_qt(outer / "python")
+        _install_wizard_qt(outer / "python", system_name, arch)
         _copy_package(_site_packages(outer / "python"))
         _bundle_extractors(host, outer / "tools")
         setup = output / setup_asset_name(host, arch)
@@ -158,7 +162,7 @@ def pack(system_name: str, arch: str, output: Path) -> int:
 
 def _pack_python(system_name: str, arch: str, work: Path) -> Path:
     client = UrllibClient()
-    document = client.get(PYTHON_RELEASE, timeout=60)
+    document = client.get(PYTHON_RELEASE, timeout=60, headers=_github_headers())
     if isinstance(document, Failure):
         raise SystemExit(document.message)
     parsed: object = json.loads(document.body.decode("utf-8"))
@@ -209,12 +213,82 @@ def _python_sha256(document: object, name: str, work: Path) -> str:
     return listed
 
 
-def _install_wizard_qt(python_root: Path) -> None:
+def _github_headers() -> dict[str, str]:
+    """Return a GitHub token header when Actions provided one."""
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    if not token:
+        return {}
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+
+def _python_interpreter(python_root: Path) -> Path:
     interpreter = python_root / "python.exe"
-    if not interpreter.is_file():
-        interpreter = python_root / "bin" / "python3"
+    if interpreter.is_file():
+        return interpreter
+    return python_root / "bin" / "python3"
+
+
+def cross_qt_command(
+    site_packages: Path, system_name: str, arch: str, *, uv: str | None = None
+) -> list[str] | Failure | None:
+    """Return a host command that installs Qt wheels for another CPU."""
+    platform = _CROSS_PLATFORM.get((system_name, arch))
+    if platform is None:
+        return None
+    resolved = uv if uv is not None else shutil.which("uv")
+    if not resolved:
+        return Failure("command", "uv is not on PATH")
+    return [
+        resolved,
+        "pip",
+        "install",
+        "--target",
+        str(site_packages),
+        "--python-platform",
+        platform,
+        "--python-version",
+        PYTHON_MINOR,
+        "--only-binary",
+        ":all:",
+        "--link-mode",
+        "copy",
+        "--no-config",
+        PYSIDE_REQUIREMENT,
+    ]
+
+
+def _install_qt_for_other_cpu(
+    python_root: Path,
+    system_name: str,
+    arch: str,
+    failure: Failure,
+) -> Failure | None:
+    """Install Qt wheels when the packed interpreter cannot run here."""
+    cross = cross_qt_command(_site_packages(python_root), system_name, arch)
+    if cross is None:
+        return failure
+    if isinstance(cross, Failure):
+        return cross
+    LOGGER.warning(
+        "Could not run the packed interpreter (%s); installing %s wheels with uv",
+        failure.message,
+        arch,
+    )
+    return run_command(cross)
+
+
+def _install_wizard_qt(python_root: Path, system_name: str, arch: str) -> None:
+    interpreter = _python_interpreter(python_root)
+    failure = run_command(
+        [str(interpreter), "-m", "pip", "install", PYSIDE_REQUIREMENT]
+    )
+    if failure is None:
+        return
     _require(
-        run_command([str(interpreter), "-m", "pip", "install", PYSIDE_REQUIREMENT]),
+        _install_qt_for_other_cpu(python_root, system_name, arch, failure),
         "install PySide6 for the wizard",
     )
 
@@ -262,11 +336,11 @@ def _sfx_module(directory: Path) -> Path:
     found = os.environ.get("CURSOR_PORTABLE_SFX")
     if found:
         return Path(found)
-    extra = directory / "7z-extra.7z"
-    _download(SFX_EXTRA, extra, 100_000)
+    extra = directory / "lzma-sdk.7z"
+    _download(SFX_SDK, extra, 100_000)
     _require(
         check_download(extra, minimum_bytes=100_000, expected_sha256=SFX_SHA256),
-        "hash 7z extra",
+        "hash 7-Zip SDK",
     )
     unpacked = directory / "7z-extra"
     unpacked.mkdir(exist_ok=True)
@@ -276,12 +350,13 @@ def _sfx_module(directory: Path) -> Path:
     )
     matches = list(unpacked.rglob("7zSD.sfx"))
     if not matches:
-        raise SystemExit("7z extra did not contain 7zSD.sfx.")
+        raise SystemExit("7-Zip SDK did not contain 7zSD.sfx.")
     return matches[0]
 
 
 def main(argv: list[str] | None = None) -> int:
     """Pack a tool-only setup for one operating system and CPU."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--system", required=True)
     parser.add_argument("--arch", required=True)
