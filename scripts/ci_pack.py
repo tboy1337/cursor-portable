@@ -317,19 +317,20 @@ def _bundle_extractors(host: HostSystem, tools: Path) -> None:
 
 
 def _write_setup(host: HostSystem, outer: Path, setup: Path) -> None:
+    """Write the self-extractor. Intermediate archives stay out of the output."""
     seven = _seven_zip()
-    outer_archive = setup.parent / f"{setup.stem}-outer.7z"
-    _require(run_command(seven_zip_add(seven, outer_archive, outer)), "archive setup")
-    if host is HostSystem.WINDOWS:
-        module = _sfx_module(setup.parent)
-        setup.write_bytes(
-            build_windows_sfx(module.read_bytes(), outer_archive.read_bytes())
+    with tempfile.TemporaryDirectory(prefix="cursor-portable-sfx-") as temporary:
+        work = Path(temporary)
+        outer_archive = work / "outer.7z"
+        _require(
+            run_command(seven_zip_add(seven, outer_archive, outer)), "archive setup"
         )
-        return
-    extractor = Path(seven)
-    setup.write_bytes(
-        build_posix_sfx(extractor.read_bytes(), outer_archive.read_bytes())
-    )
+        archive = outer_archive.read_bytes()
+        if host is HostSystem.WINDOWS:
+            module = _sfx_module(work)
+            setup.write_bytes(build_windows_sfx(module.read_bytes(), archive))
+            return
+        setup.write_bytes(build_posix_sfx(Path(seven).read_bytes(), archive))
 
 
 def _sfx_module(directory: Path) -> Path:
