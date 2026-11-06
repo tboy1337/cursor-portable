@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
 
 import cursor_portable.__main__ as package_main
+from cursor_portable._version import __version__
 from cursor_portable.cli.disk_cmd import run_disk_command
 from cursor_portable.cli import launch_cmd
 from cursor_portable.cli.live import (
@@ -658,7 +659,7 @@ def test_probe_and_cli(tmp_path: Path, monkeypatch: object, capsys: object) -> N
     assert not isinstance(skipped, Failure)
     assert isinstance(load_probed_volumes(HostSystem.MACOS), Failure)
     assert main(["--version"]) == 0
-    assert capsys.readouterr().out.strip() == "1.0.0"  # type: ignore[attr-defined]
+    assert capsys.readouterr().out.strip() == __version__  # type: ignore[attr-defined]
     native = {
         HostSystem.WINDOWS: "NTFS",
         HostSystem.MACOS: "APFS",
