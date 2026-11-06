@@ -41,3 +41,120 @@ jobs:
         run: uv run python scripts/verify.py
         env:
           QT_QPA_PLATFORM: offscreen
+
+  # Publish only after a push to main changes [project].version in pyproject.toml.
+  release-check:
+    needs: quality
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.version.outputs.release }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: uv sync --extra dev
+      - name: Compare pyproject.toml with the previous commit
+        id: version
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: >-
+          uv run python scripts/ci_release.py
+          --before "$BEFORE_SHA"
+          --after-file pyproject.toml
+          --github-output "$GITHUB_OUTPUT"
+
+  pack:
+    name: Pack ${{ matrix.system }} ${{ matrix.arch }}
+    needs: release-check
+    if: >-
+      needs.release-check.result == 'success' &&
+      needs.release-check.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            system: windows
+            arch: x64
+          - os: windows-latest
+            system: windows
+            arch: arm64
+          - os: ubuntu-latest
+            system: linux
+            arch: x64
+          - os: ubuntu-24.04-arm
+            system: linux
+            arch: arm64
+          - os: macos-latest
+            system: macos
+            arch: x64
+          - os: macos-latest
+            system: macos
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: uv sync --extra dev
+      - name: Install pack tools
+        shell: bash
+        run: |
+          if [ "${{ matrix.system }}" = "windows" ]; then
+            choco install 7zip -y
+          elif [ "${{ matrix.system }}" = "linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y p7zip-full
+          else
+            brew install sevenzip
+          fi
+      - name: Pack
+        run: >-
+          uv run python scripts/ci_pack.py
+          --system "${{ matrix.system }}"
+          --arch "${{ matrix.arch }}"
+          --output dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pack-${{ matrix.system }}-${{ matrix.arch }}
+          path: dist/*
+
+  publish:
+    needs: [release-check, pack]
+    if: >-
+      needs.release-check.result == 'success' &&
+      needs.release-check.outputs.release == 'true' &&
+      needs.pack.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: uv sync --extra dev
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: pack-*
+          path: packs
+          merge-multiple: true
+      - name: Publish the setup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: >-
+          uv run python scripts/ci_publish.py
+          --packs packs
+          --version "${{ needs.release-check.outputs.version }}"
+          --target "${{ github.sha }}"

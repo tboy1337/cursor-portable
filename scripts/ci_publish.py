@@ -9,8 +9,9 @@ from pathlib import Path
 import re
 import subprocess
 
+from cursor_portable._version import RELEASE_VERSION
+
 LOGGER = logging.getLogger(__name__)
-_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 _COMMIT = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
@@ -56,7 +57,7 @@ def release_command(
 
 
 def _reject(version: str, target: str) -> str | None:
-    if _VERSION.fullmatch(version) is None:
+    if RELEASE_VERSION.fullmatch(version) is None:
         return f"Refusing version {version}"
     if _COMMIT.fullmatch(target) is None:
         return f"Refusing target {target}"
@@ -91,7 +92,7 @@ def publish_release(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI for the weekly publish job."""
+    """CLI for the version-bump publish job."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--packs", type=Path, required=True)

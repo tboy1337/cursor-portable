@@ -11,6 +11,7 @@ import shutil
 import tarfile
 import tempfile
 
+from cursor_portable._version import __version__, write_version_stamp
 from cursor_portable.download.catalog import setup_asset_name
 from cursor_portable.download.fetch import download_file
 from cursor_portable.download.http_client import UrllibClient
@@ -118,7 +119,9 @@ def _download(url: str, destination: Path, minimum: int) -> None:
 
 def _copy_package(destination: Path) -> None:
     source = Path(__file__).resolve().parents[1] / "src" / "cursor_portable"
-    shutil.copytree(source, destination / "cursor_portable", dirs_exist_ok=True)
+    target = destination / "cursor_portable"
+    shutil.copytree(source, target, dirs_exist_ok=True)
+    write_version_stamp(target, __version__)
 
 
 def _site_packages(python_root: Path) -> Path:

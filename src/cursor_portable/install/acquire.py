@@ -14,6 +14,7 @@ import tarfile
 import zipfile
 
 import cursor_portable
+from cursor_portable._version import __version__, write_version_stamp
 from cursor_portable.constants import MIN_CURSOR_BYTES
 from cursor_portable.download.catalog import cli_install_url, ide_target
 from cursor_portable.download.cli_script import cli_archive_url
@@ -149,6 +150,7 @@ def copy_tool_package(tool_root: Path) -> Failure | None:
             target,
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
         )
+        write_version_stamp(target, __version__)
     except OSError as exc:
         return Failure("tool", f"Could not copy the launcher package: {exc}")
     LOGGER.info("Copied %s to %s", source, target)
