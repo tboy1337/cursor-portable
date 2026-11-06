@@ -1,0 +1,37 @@
+[run]
+source = src/cursor_portable
+branch = True
+concurrency = thread
+relative_files = True
+
+omit =
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */.venv/*
+    */venv/*
+    */build/*
+    */dist/*
+    */htmlcov/*
+
+[report]
+fail_under = 90.0
+show_missing = True
+precision = 2
+sort = Cover
+
+exclude_also =
+    if TYPE_CHECKING:
+    @(abc\.)?abstractmethod
+
+[html]
+directory = htmlcov
+title = Coverage Report for cursor-portable
+
+[xml]
+output = coverage.xml
+
+[paths]
+source =
+    src/cursor_portable
+    */site-packages/cursor_portable

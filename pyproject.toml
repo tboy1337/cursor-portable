@@ -1,0 +1,83 @@
+[build-system]
+build-backend = "uv_build"
+requires = [ "uv-build>=0.13.1,<0.14" ]
+
+[project]
+name = "cursor-portable"
+version = "1.0.0"
+description = "Download Cursor and install a portable copy on a removable drive."
+readme = "README.md"
+keywords = [ "cursor", "portable" ]
+license = "MIT"
+license-files = [ "LICENSE" ]
+authors = [ { name = "tboy1337" } ]
+requires-python = ">=3.11,<3.16"
+classifiers = [
+  "Environment :: Win32 (MS Windows)",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Typing :: Typed",
+]
+dependencies = [ "pyside6" ]
+optional-dependencies.dev = [
+  "autopep8",
+  "bandit",
+  "black",
+  "blinter",
+  "complexipy",
+  "isort",
+  "mypy",
+  "pip-audit",
+  "pylint",
+  "pyproject-fmt",
+  "pytest",
+  "pytest-cov",
+  "pytest-mock",
+  "pytest-qt",
+  "pytest-timeout",
+  "pytest-xdist",
+  "shellcheck-py",
+  "yamllint",
+]
+urls.Documentation = "https://github.com/tboy1337/cursor-portable/tree/main/docs"
+urls.Homepage = "https://github.com/tboy1337/cursor-portable"
+urls.Repository = "https://github.com/tboy1337/cursor-portable.git"
+scripts.cursor-portable = "cursor_portable.cli.main:main"
+
+[tool.uv]
+package = true
+
+[tool.black]
+target-version = [ "py311", "py312", "py313", "py314", "py315" ]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+atomic = true
+line_length = 88
+force_sort_within_sections = true
+lexicographical = true
+combine_as_imports = true
+known_first_party = [ "cursor_portable" ]
+src_paths = [ "scripts", "src", "tests" ]
+skip_gitignore = true
+
+[tool.pyproject-fmt]
+max_supported_python = "3.15"
+
+[tool.bandit]
+exclude_dirs = [ ".venv", "build", "dist", "tests", "venv" ]
+# B101: assert is confined to tests, which are excluded above.
+# B310: urllib is used only after an https:// check.
+# B404/B603: process calls use argument lists and never a shell string.
+# B607: cmd, powershell, diskutil, and 7-Zip are resolved from PATH on purpose.
+skips = [ "B101", "B310", "B404", "B603", "B607" ]
+
+[tool.complexipy]
+max-complexity = 15

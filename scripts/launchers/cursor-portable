@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+export PYTHONPATH="${ROOT}/tool"
+if [[ -x "${ROOT}/python/bin/python3" ]]; then
+    PY="${ROOT}/python/bin/python3"
+else
+    PY="${ROOT}/python/python.exe"
+fi
+exec "$PY" -m cursor_portable launch --root "$ROOT"

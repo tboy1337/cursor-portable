@@ -1,0 +1,39 @@
+* text=auto
+
+*.py text eol=lf
+*.pyi text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+uv.lock text eol=lf
+*.ini text eol=lf
+*.txt text eol=lf
+.coveragerc text eol=lf
+pylintrc text eol=lf
+pytest.ini text eol=lf
+mypy.ini text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+scripts/launchers/CursorPortable.cmd text eol=crlf
+scripts/launchers/cursor-portable text eol=lf
+scripts/launchers/*.ps1 text eol=lf
+
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.7z binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
