@@ -10,7 +10,7 @@ CursorPortable/
   data/user-data/       settings and chats
   data/extensions/      extensions
   data/dot-cursor/      skills, rules, MCP config, and agents
-  python/               relocatable CPython 3.13 with pip
+  python/               relocatable CPython 3.14 with pip
   tool/                 this package, imported by the launchers
   cli/                  Cursor CLI, when selected
   CursorPortable.cmd    Windows launcher, only on a Windows stick

@@ -30,7 +30,11 @@ from cursor_portable.models import (
     ProductKind,
     host_system_name,
 )
-from cursor_portable.python_runtime.pin import ASSET_MARKERS, select_python_asset
+from cursor_portable.python_runtime.pin import (
+    ASSET_MARKERS,
+    PYTHON_MINOR,
+    select_python_asset,
+)
 from cursor_portable.repack.archive import run_command
 from cursor_portable.repack.commands import innoextract_command
 from cursor_portable.repack.extract_ide import application_directory, extract_ide
@@ -548,7 +552,8 @@ def _python_choice(
         return Failure("python", f"No portable Python build for {system.value} {arch}.")
     name = select_python_asset(_asset_names(document), marker)
     if name is None:
-        return Failure("python", f"No CPython 3.13 asset for {marker}.")
+        return Failure("python", f"No CPython {PYTHON_MINOR} asset for {marker}.")
+    LOGGER.info("Selected portable CPython asset %s", name)
     url = _asset_url(document, name)
     if url is None:
         return Failure("python", f"Release JSON has no URL for {name}.")

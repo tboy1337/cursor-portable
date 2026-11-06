@@ -19,7 +19,11 @@ from cursor_portable.download.verify_file import check_download, file_sha256
 from cursor_portable.failure import Failure
 from cursor_portable.install.acquire import innoextract_executable
 from cursor_portable.models import HostSystem
-from cursor_portable.python_runtime.pin import ASSET_MARKERS, select_python_asset
+from cursor_portable.python_runtime.pin import (
+    ASSET_MARKERS,
+    PYTHON_MINOR,
+    select_python_asset,
+)
 from cursor_portable.repack.archive import run_command, seven_zip_add
 from cursor_portable.repack.sfx import build_posix_sfx, build_windows_sfx
 
@@ -158,7 +162,7 @@ def _pack_python(system_name: str, arch: str, work: Path) -> Path:
     marker = ASSET_MARKERS[f"{system_name}-{arch}"]
     name = select_python_asset(asset_names(parsed), marker)
     if name is None:
-        raise SystemExit(f"No CPython 3.13 asset for {marker}.")
+        raise SystemExit(f"No CPython {PYTHON_MINOR} asset for {marker}.")
     url = asset_url(parsed, name)
     if url is None:
         raise SystemExit(f"Release JSON has no URL for {name}.")

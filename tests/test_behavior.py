@@ -737,9 +737,18 @@ def test_path_home_shortcuts_and_cache(tmp_path: Path) -> None:
     assert parse_ps("12 CursorUserSetup.exe")[0].pid == 12
     report = parse_shortcut_report("a.lnk|C:\\Cursor.exe\n")
     assert report[0].location == "a.lnk"
-    assert select_python_asset(
-        ("cpython-3.13.1-x86_64-pc-windows-msvc-install_only.tar.gz",),
-        "x86_64-pc-windows-msvc-install_only.tar.gz",
+    marker = "x86_64-pc-windows-msvc-install_only.tar.gz"
+    assert (
+        select_python_asset(
+            (
+                "cpython-3.14.10+20261026-x86_64-pc-windows-msvc-freethreaded-install_only.tar.gz",
+                f"cpython-3.14.9+20261001-{marker}",
+                f"cpython-3.14.10+20261026-{marker}",
+                f"cpython-3.13.11+20261026-{marker}",
+            ),
+            marker,
+        )
+        == f"cpython-3.14.10+20261026-{marker}"
     )
     assert select_python_asset(("nope",), "missing") is None
     record = SessionRecord(path_segments=["D:\\py"], pid="9")

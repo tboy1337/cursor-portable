@@ -169,7 +169,7 @@ def test_acquire_payload_without_network(tmp_path: Path, monkeypatch: object) ->
                     "assets": [
                         {
                             "name": (
-                                "cpython-3.13.1-x86_64-pc-windows-msvc-install_only.tar.gz"
+                                "cpython-3.14.10+20261026-x86_64-pc-windows-msvc-install_only.tar.gz"
                             ),
                             "browser_download_url": "https://example.invalid/python.tar.gz",
                             "digest": "sha256:" + ("ab" * 32),
@@ -684,7 +684,7 @@ def test_release_lookup_refuses_incomplete_metadata(
     assert acquire._asset_url({"assets": "no"}, "a") is None
     assert acquire._asset_sha256({"assets": "no"}, "a") is None
     digest = "a" * 64
-    asset_name = "cpython-3.13.0-x86_64-pc-windows-msvc-install_only.tar.gz"
+    asset_name = "cpython-3.14.10+20261026-x86_64-pc-windows-msvc-install_only.tar.gz"
     release = {
         "assets": [
             1,
