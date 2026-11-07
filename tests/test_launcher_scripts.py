@@ -60,7 +60,7 @@ def test_write_launcher_scripts_emits_lint_targets(tmp_path: Path) -> None:
     assert cmd == windows_launcher_text().encode("utf-8")
     assert bash == unix_launcher_text().encode("utf-8")
     assert b"\r" not in bash
-    assert bash.startswith(b"#!/bin/bash\n")
+    assert bash.startswith(b"#!/usr/bin/env bash\n")
     assert cmd.startswith(b"@echo off\r\n")
     bodies = _command_bodies(cmd.decode("ascii"))
     snippets = [
@@ -88,7 +88,7 @@ def test_windows_launcher_expands_the_exit_code_on_the_endlocal_line() -> None:
     assert "endlocal & exit /b %EXIT_CODE%\r\n" in windows_launcher_text()
 
 
-_PYTHON_STUB = """#!/bin/bash
+_PYTHON_STUB = """#!/usr/bin/env bash
 printf '%s\\n' "$0" > "$STUB_LOG"
 printf '%s\\n' "$PYTHONPATH" >> "$STUB_LOG"
 printf '%s\\n' "$@" >> "$STUB_LOG"

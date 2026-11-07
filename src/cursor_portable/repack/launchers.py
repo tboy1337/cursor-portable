@@ -65,7 +65,7 @@ pause
 goto :eof
 """
 
-UNIX_LAUNCHER = """#!/bin/bash
+UNIX_LAUNCHER = """#!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 export PYTHONPATH="${ROOT}/tool"

@@ -13,7 +13,7 @@ RunProgram="python\\\\python.exe -m cursor_portable"
 ;!@InstallEnd@!
 """
 
-_POSIX = """#!/bin/bash
+_POSIX = """#!/usr/bin/env bash
 set -euo pipefail
 EXTRACTOR_OFFSET={extractor_offset:012d}
 EXTRACTOR_SIZE={extractor_size:012d}

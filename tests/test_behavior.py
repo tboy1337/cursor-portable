@@ -1000,7 +1000,7 @@ def test_cli_pack_and_repair(tmp_path: Path, capsys: object) -> None:
         )
         == 0
     )
-    assert posix.read_bytes().startswith(b"#!/bin/bash")
+    assert posix.read_bytes().startswith(b"#!/usr/bin/env bash")
     host = host_system_name()
     native = display_filesystem(filesystem_for(host))
     code = main(
