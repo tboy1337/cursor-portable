@@ -48,17 +48,6 @@ _READY = Path(tempfile.gettempdir()) / "cursor-session-ready"
 _STOP = Path(tempfile.gettempdir()) / "cursor-session-stop"
 _READY_TIMEOUT = 90.0
 _EXIT_TIMEOUT = 60.0
-_STUB = "\n".join(
-    (
-        "#!/bin/sh",
-        "set -eu",
-        "printf '%s\\n' ready > \"${CURSOR_SESSION_READY}\"",
-        'while [ ! -f "${CURSOR_SESSION_STOP}" ]; do',
-        "    sleep 0.2",
-        "done",
-        "",
-    )
-)
 
 
 @dataclass(frozen=True)
@@ -218,10 +207,16 @@ def _require_stick_bin(bin_dir: Path) -> str | None:
     return None
 
 
+def _session_stub() -> str:
+    path = Path(__file__).resolve().parents[1] / "tests" / "shell" / "session-stub.sh"
+    LOGGER.info("Using session stub %s", path)
+    return path.read_text(encoding="utf-8")
+
+
 def _write_stub(app: Path) -> None:
     app.mkdir(parents=True, exist_ok=True)
     target = app / "cursor"
-    target.write_text(_STUB, encoding="utf-8", newline="\n")
+    target.write_text(_session_stub(), encoding="utf-8", newline="\n")
     target.chmod(0o755)
     LOGGER.info("Wrote stub Cursor at %s", target)
 

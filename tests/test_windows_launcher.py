@@ -88,7 +88,9 @@ def test_managed_shortcut_starts_minimized(
     monkeypatch.setattr("cursor_portable.launcher.host_watch._run", capture)
     write_managed_shortcut(tmp_path / "CursorPortable.cmd", windows=True)
     assert seen
-    assert "WindowStyle = 7" in seen[0][-1]
+    assert seen[0][seen[0].index("-WindowStyle") + 1] == "7"
+    shortcut = Path(seen[0][seen[0].index("-File") + 1])
+    assert "CreateShortcut" in shortcut.read_text(encoding="utf-8")
 
 
 def test_notify_headless_only_without_a_console(

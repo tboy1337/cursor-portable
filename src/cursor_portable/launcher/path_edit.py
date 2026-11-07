@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from cursor_portable.constants import PATH_BLOCK_END, PATH_BLOCK_START
 from cursor_portable.models import HostSystem
+from cursor_portable.shell import shell_text
 
 
 def separator_for(system: HostSystem) -> str:
@@ -48,16 +49,17 @@ def remove_segments(path: str, segments: tuple[str, ...], separator: str) -> str
     return updated
 
 
+def _assignment_template() -> str:
+    text = shell_text("prepend-path.sh").replace("\r\n", "\n").replace("\r", "\n")
+    if text.endswith("\n"):
+        return text
+    return f"{text}\n"
+
+
 def _shell_assignment(name: str, segment: str) -> str:
     quoted = segment.replace("'", "'\\''")
-    return (
-        f"{name}='{quoted}'\n"
-        'case ":${PATH}:" in\n'
-        f'    *":${{{name}}}:"*) ;;\n'
-        f'    *) PATH="${{{name}}}:${{PATH}}"; export PATH ;;\n'
-        "esac\n"
-        f"unset {name}\n"
-    )
+    rendered = _assignment_template().replace("cursor_portable_bin", name)
+    return rendered.replace("__SEGMENT__", quoted)
 
 
 def path_block(segment: str | tuple[str, ...]) -> str:

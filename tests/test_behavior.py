@@ -559,7 +559,8 @@ def test_repair_runs_after_a_clean_check(monkeypatch: object) -> None:
     assert lsblk[0].removable is True
     assert isinstance(volumes_from_lsblk("{"), Failure)
     assert windows_probe_command()[0] == "powershell"
-    assert "writable" in windows_probe_command()[-1]
+    probe = Path(windows_probe_command()[-1]).read_text(encoding="utf-8")
+    assert "writable" in probe
     assert linux_probe_command()[0] == "lsblk"
     assert "RO" in linux_probe_command()[-1]
     mounts = parse_mount_writable(

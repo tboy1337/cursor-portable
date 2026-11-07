@@ -16,7 +16,7 @@ from cursor_portable.repack.launchers import (
     write_launcher_scripts,
 )
 
-_REPO_LAUNCHERS = Path(__file__).resolve().parents[1] / "scripts" / "launchers"
+_REPO_LAUNCHERS = Path(__file__).resolve().parent / "launchers"
 _NAMES = (
     "CursorPortable.cmd",
     "cursor-portable",

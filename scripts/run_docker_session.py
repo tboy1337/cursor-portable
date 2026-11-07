@@ -15,12 +15,7 @@ import sys
 
 LOGGER = logging.getLogger("run_docker_session")
 _IMAGE = "cursor-portable-session"
-_COMMAND = (
-    'mkdir -p "$HOME" /tmp/uv-cache && '
-    "uv python install 3.13 && "
-    "uv sync --extra dev --frozen --no-editable --python 3.13 && "
-    "uv run --python 3.13 python scripts/docker_session.py"
-)
+_SESSION_SCRIPT = "/work/tests/shell/run_docker_session.sh"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,6 +26,11 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s %(message)s",
     )
     root = Path(__file__).resolve().parent.parent
+    script = root / "tests" / "shell" / "run_docker_session.sh"
+    if not script.is_file():
+        LOGGER.error("Missing session script %s", script)
+        return 1
+    LOGGER.info("Container session script %s", script)
     built = _run(_build_command(root))
     if built != 0:
         return built
@@ -72,8 +72,7 @@ def _container_command(root: Path) -> list[str]:
         "HOME=/tmp/session-home",
         _IMAGE,
         "bash",
-        "-lc",
-        _COMMAND,
+        _SESSION_SCRIPT,
     ]
 
 

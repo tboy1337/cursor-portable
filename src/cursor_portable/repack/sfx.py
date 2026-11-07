@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from cursor_portable.failure import Failure
+from cursor_portable.shell import shell_text
 
 _SFX_CONFIG = """;!@Install@!UTF-8!
 Title="Cursor Portable"
@@ -13,23 +14,13 @@ RunProgram="python\\\\python.exe -m cursor_portable"
 ;!@InstallEnd@!
 """
 
-_POSIX = """#!/usr/bin/env bash
-set -euo pipefail
-EXTRACTOR_OFFSET={extractor_offset:012d}
-EXTRACTOR_SIZE={extractor_size:012d}
-ARCHIVE_OFFSET={archive_offset:012d}
-ARCHIVE_SIZE={archive_size:012d}
-SELF="$0"
-TMP="$(mktemp -d)"
-cleanup() {{ rm -rf "$TMP"; }}
-trap cleanup EXIT
-tail -c +$((EXTRACTOR_OFFSET + 1)) "$SELF" | head -c "$EXTRACTOR_SIZE" > "$TMP/7zz"
-tail -c +$((ARCHIVE_OFFSET + 1)) "$SELF" | head -c "$ARCHIVE_SIZE" > "$TMP/setup.7z"
-chmod +x "$TMP/7zz"
-"$TMP/7zz" x "-o$TMP/root" -y "$TMP/setup.7z"
-PY="$TMP/root/python/bin/python3"
-exec "$PY" -m cursor_portable "$@"
-"""
+_OFFSET_NAMES = (
+    "EXTRACTOR_OFFSET",
+    "EXTRACTOR_SIZE",
+    "ARCHIVE_OFFSET",
+    "ARCHIVE_SIZE",
+)
+_OFFSET_LIMIT = 999_999_999_999
 
 
 def windows_sfx_config() -> str:
@@ -43,23 +34,43 @@ def build_windows_sfx(sfx_module: bytes, archive: bytes) -> bytes:
     return sfx_module + config + archive
 
 
-def _posix_script(extractor_size: int, archive_size: int) -> bytes:
-    prototype = _POSIX.format(
-        extractor_offset=0,
-        extractor_size=extractor_size,
-        archive_offset=0,
-        archive_size=archive_size,
-    ).encode("utf-8")
-    script_length = len(prototype)
-    rendered = _POSIX.format(
-        extractor_offset=script_length,
-        extractor_size=extractor_size,
-        archive_offset=script_length + extractor_size,
-        archive_size=archive_size,
-    ).encode("utf-8")
-    if len(rendered) != script_length:
-        raise RuntimeError("POSIX self-extractor script length changed.")
+def _posix_template() -> str:
+    text = shell_text("posix-extractor.sh").replace("\r\n", "\n").replace("\r", "\n")
+    if text.endswith("\n"):
+        return text
+    return f"{text}\n"
+
+
+def _render_posix(template: str, values: dict[str, int]) -> str:
+    """Fill the 12-digit offset fields without changing the script length."""
+    rendered = template
+    for name in _OFFSET_NAMES:
+        value = values[name]
+        if value < 0 or value > _OFFSET_LIMIT:
+            raise RuntimeError(f"{name} does not fit in 12 digits.")
+        token = f"{name}={0:012d}"
+        if rendered.count(token) != 1:
+            raise RuntimeError(f"POSIX extractor has no single {name} field.")
+        rendered = rendered.replace(token, f"{name}={value:012d}", 1)
     return rendered
+
+
+def _posix_script(extractor_size: int, archive_size: int) -> bytes:
+    template = _posix_template()
+    script_length = len(template.encode("utf-8"))
+    rendered = _render_posix(
+        template,
+        {
+            "EXTRACTOR_OFFSET": script_length,
+            "EXTRACTOR_SIZE": extractor_size,
+            "ARCHIVE_OFFSET": script_length + extractor_size,
+            "ARCHIVE_SIZE": archive_size,
+        },
+    )
+    encoded = rendered.encode("utf-8")
+    if len(encoded) != script_length:
+        raise RuntimeError("POSIX self-extractor script length changed.")
+    return encoded
 
 
 def build_posix_sfx(extractor: bytes, archive: bytes) -> bytes:

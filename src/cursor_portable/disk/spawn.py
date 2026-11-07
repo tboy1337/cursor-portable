@@ -16,6 +16,7 @@ from cursor_portable.disk.elevation import elevation_failure, elevation_ready
 from cursor_portable.failure import Failure
 from cursor_portable.models import HostSystem, host_system_name
 from cursor_portable.runtime import is_windows
+from cursor_portable.shell import shell_path
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,33 +24,6 @@ _CANCELLED = 1223
 _SEE_MASK_NOCLOSEPROCESS = 0x00000040
 _WAIT_INFINITE = 0xFFFFFFFF
 _SW_HIDE = 0
-
-_ELEVATED_SCRIPT = """
-param(
-    [Parameter(Mandatory = $true)][string]$CommandPath,
-    [Parameter(Mandatory = $true)][string]$OutputPath,
-    [Parameter(Mandatory = $true)][string]$CodePath
-)
-$ErrorActionPreference = 'Stop'
-$payload = Get-Content -LiteralPath $CommandPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = [string]$payload.executable
-$psi.Arguments = [string]$payload.arguments
-$psi.UseShellExecute = $false
-$psi.RedirectStandardOutput = $true
-$psi.RedirectStandardError = $true
-$psi.CreateNoWindow = $true
-$proc = New-Object System.Diagnostics.Process
-$proc.StartInfo = $psi
-[void]$proc.Start()
-$outTask = $proc.StandardOutput.ReadToEndAsync()
-$errTask = $proc.StandardError.ReadToEndAsync()
-$proc.WaitForExit()
-Set-Content -LiteralPath $OutputPath -Value $outTask.Result -Encoding utf8
-Set-Content -LiteralPath ($OutputPath + '.err') -Value $errTask.Result -Encoding utf8
-Set-Content -LiteralPath $CodePath -Value $proc.ExitCode -Encoding ascii
-exit $proc.ExitCode
-"""
 
 
 class _ShellExecuteInfo(ctypes.Structure):
@@ -162,8 +136,7 @@ def _windows_elevated(command: tuple[str, ...]) -> tuple[int, str] | Failure:
             "arguments": " ".join(quote_windows_arg(part) for part in resolved[1:]),
         }
         command_file.write_text(json.dumps(payload), encoding="utf-8")
-        script = directory / "elevate.ps1"
-        script.write_text(_ELEVATED_SCRIPT, encoding="utf-8")
+        script = shell_path("Invoke-ElevatedCommand.ps1")
         output = directory / "output.txt"
         code_path = directory / "code.txt"
         parameters = " ".join(

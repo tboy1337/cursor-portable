@@ -10,7 +10,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 CHECK_DIRS = ("src", "scripts", "tests")
-_LAUNCHERS = ROOT / "scripts" / "launchers"
+_LAUNCHERS = ROOT / "tests" / "launchers"
+_SHELL = ROOT / "tests" / "shell"
 _WINDOWS_STEPS = frozenset({"pytest", "powershell"})
 
 
@@ -26,6 +27,36 @@ def _shellcheck() -> str:
     """
     name = "shellcheck.exe" if sys.platform == "win32" else "shellcheck"
     return str(Path(sys.executable).parent / name)
+
+
+def _shellcheck_groups() -> tuple[tuple[str, tuple[Path, ...]], ...]:
+    """Bash and sh files checked by shellcheck."""
+    return (
+        (
+            "bash",
+            (
+                _LAUNCHERS / "cursor-portable",
+                _SHELL / "posix-extractor.sh",
+                _SHELL / "run_docker_session.sh",
+            ),
+        ),
+        (
+            "sh",
+            (
+                _SHELL / "prepend-path.sh",
+                _SHELL / "session-stub.sh",
+            ),
+        ),
+    )
+
+
+def _shellcheck_command(shell: str, files: tuple[Path, ...]) -> list[str]:
+    return [
+        _shellcheck(),
+        f"--shell={shell}",
+        "--severity=warning",
+        *(str(path) for path in files),
+    ]
 
 
 def _powershell_lint() -> list[str]:
@@ -85,16 +116,9 @@ def _steps(*, skip_pytest: bool) -> list[tuple[str, list[str]]]:
                 str(_LAUNCHERS / "CursorPortable.cmd"),
             ),
         ),
-        (
-            "shellcheck",
-            [
-                _shellcheck(),
-                "--shell=bash",
-                "--severity=warning",
-                str(_LAUNCHERS / "cursor-portable"),
-            ],
-        ),
     ]
+    for shell, files in _shellcheck_groups():
+        steps.append(("shellcheck", _shellcheck_command(shell, files)))
     if sys.platform == "win32":
         steps.append(("powershell", _powershell_lint()))
     if not skip_pytest:

@@ -8,7 +8,17 @@ function Get-LauncherPath {
         [Parameter(Mandatory = $true)]
         [string]$Name
     )
-    $root = Join-Path -Path $PSScriptRoot -ChildPath '..\..\scripts\launchers'
+    $root = Join-Path -Path $PSScriptRoot -ChildPath '..\launchers'
+    return (Resolve-Path -LiteralPath (Join-Path -Path $root -ChildPath $Name)).Path
+}
+
+function Get-ShellScriptPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+    $root = Join-Path -Path $PSScriptRoot -ChildPath '..\shell'
     return (Resolve-Path -LiteralPath (Join-Path -Path $root -ChildPath $Name)).Path
 }
 

@@ -148,8 +148,10 @@ def _choices(profile: ProfileMode = ProfileMode.FRESH) -> InstallChoices:
 
 def test_host_watch_probes(tmp_path: Path, monkeypatch: object) -> None:
     command = windows_shortcut_command()
-    assert "WScript.Shell" in command[-1]
-    assert "ProgramData" in command[-1]
+    script = Path(command[-1]).read_text(encoding="utf-8")
+    assert command[5] == "-File"
+    assert "WScript.Shell" in script
+    assert "ProgramData" in script
     desktop = tmp_path / "Desktop"
     desktop.mkdir()
     ready = desktop / "Cursor.desktop"
@@ -680,7 +682,7 @@ def test_windows_usb_dock_counts_as_portable() -> None:
     )
     assert not isinstance(legacy, Failure)
     assert legacy[0].removable is False
-    command = windows_probe_command()[-1]
+    command = Path(windows_probe_command()[-1]).read_text(encoding="utf-8")
     assert "MSFT_Disk" in command
     assert "MediaType" in command
 

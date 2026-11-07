@@ -17,9 +17,10 @@ mypy.ini text eol=lf
 .gitignore text eol=lf
 .gitattributes text eol=lf
 
-scripts/launchers/CursorPortable.cmd text eol=crlf
-scripts/launchers/cursor-portable text eol=lf
-scripts/launchers/*.ps1 text eol=lf
+tests/launchers/CursorPortable.cmd text eol=crlf
+tests/launchers/cursor-portable text eol=lf
+*.ps1 text eol=lf
+*.sh text eol=lf
 docker/Dockerfile text eol=lf
 
 *.exe binary

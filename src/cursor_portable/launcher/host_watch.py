@@ -17,25 +17,9 @@ from cursor_portable.launcher.reports import (
 )
 from cursor_portable.launcher.shortcuts import Shortcut
 from cursor_portable.runtime import is_windows
+from cursor_portable.shell import powershell_file_command
 
 LOGGER = logging.getLogger(__name__)
-
-_WINDOWS_SHORTCUTS = r"""
-$shell = New-Object -ComObject WScript.Shell
-$roots = @(
-  (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu'),
-  (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu'),
-  (Join-Path $env:USERPROFILE 'Desktop'),
-  (Join-Path $env:PUBLIC 'Desktop')
-)
-foreach ($root in $roots) {
-  if (-not $root -or -not (Test-Path -LiteralPath $root)) { continue }
-  Get-ChildItem -LiteralPath $root -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-    $shortcut = $shell.CreateShortcut($_.FullName)
-    Write-Output ($_.FullName + '|' + $shortcut.TargetPath)
-  }
-}
-"""
 
 
 def write_managed_shortcut(launcher: Path, *, windows: bool) -> None:
@@ -75,23 +59,34 @@ def _write_windows_launcher(launcher: Path) -> None:
         / "Cursor Portable.lnk"
     )
     destination.parent.mkdir(parents=True, exist_ok=True)
-    location = str(destination).replace("'", "''")
-    target = str(launcher).replace("'", "''")
     # 7 opens the console minimized. The launcher closes that window.
-    script = (
-        "$shell = New-Object -ComObject WScript.Shell; "
-        f"$shortcut = $shell.CreateShortcut('{location}'); "
-        f"$shortcut.TargetPath = '{target}'; "
-        "$shortcut.WindowStyle = 7; "
-        "$shortcut.Save()"
-    )
-    _run(["powershell", "-NoProfile", "-Command", script])
+    _run(_shortcut_command(str(destination), str(launcher), 7))
     LOGGER.info("Wrote %s", destination)
 
 
 def windows_shortcut_command() -> list[str]:
     """PowerShell command that prints ``path|target`` lines."""
-    return ["powershell", "-NoProfile", "-Command", _WINDOWS_SHORTCUTS]
+    return powershell_file_command("Get-WindowsShortcuts.ps1")
+
+
+def _shortcut_command(
+    location: str,
+    target: str,
+    window_style: int | None = None,
+) -> list[str]:
+    """PowerShell that points one ``.lnk`` file at ``target``."""
+    command = [
+        *powershell_file_command("Set-WindowsShortcut.ps1"),
+        "-Path",
+        location,
+        "-Target",
+        target,
+    ]
+    if window_style is None:
+        LOGGER.info("Restoring shortcut %s -> %s", location, target)
+        return command
+    LOGGER.info("Writing shortcut %s -> %s style %s", location, target, window_style)
+    return [*command, "-WindowStyle", str(window_style)]
 
 
 def desktop_exec(text: str) -> str:
@@ -196,15 +191,7 @@ def stop_processes(pids: tuple[int, ...]) -> None:
 
 
 def _restore_windows_shortcut(item: Shortcut) -> None:
-    location = item.location.replace("'", "''")
-    target = item.target.replace("'", "''")
-    script = (
-        "$shell = New-Object -ComObject WScript.Shell; "
-        f"$shortcut = $shell.CreateShortcut('{location}'); "
-        f"$shortcut.TargetPath = '{target}'; "
-        "$shortcut.Save()"
-    )
-    _run(["powershell", "-NoProfile", "-Command", script])
+    _run(_shortcut_command(item.location, item.target))
 
 
 def _restore_desktop_shortcut(item: Shortcut) -> None:

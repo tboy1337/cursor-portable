@@ -65,7 +65,8 @@ Import-Module -Name Pester -MinimumVersion 5.0.0
 $root = Split-Path -Path $PSScriptRoot -Parent
 $issues = @(
     Get-AnalyzerIssue -Path @(
-        (Join-Path -Path $root -ChildPath 'scripts\launchers'),
+        (Join-Path -Path $root -ChildPath 'tests\launchers'),
+        (Join-Path -Path $root -ChildPath 'tests\shell'),
         (Join-Path -Path $root -ChildPath 'tests\pester'),
         $PSCommandPath
     )
