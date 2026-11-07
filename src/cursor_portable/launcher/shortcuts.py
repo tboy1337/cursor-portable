@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path, PurePath
 import shutil
+import stat
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -41,18 +45,52 @@ def restorations(
 def with_snapshots(
     items: tuple[Shortcut, ...], directory: Path
 ) -> tuple[Shortcut, ...]:
-    """Copy each shortcut file so a later rewrite can be replaced with the bytes."""
+    """Copy shortcut bytes so a later rewrite can be replaced.
+
+    An existing snapshot is replaced even when an older copy left it
+    read-only. A shortcut that still cannot be copied is kept without a
+    snapshot so launch can continue.
+    """
     directory.mkdir(parents=True, exist_ok=True)
-    saved: list[Shortcut] = []
-    for index, item in enumerate(items):
-        source = Path(item.location)
-        if not source.is_file():
-            saved.append(item)
-            continue
-        destination = directory / f"{index}.bin"
-        shutil.copy2(source, destination)
-        saved.append(Shortcut(item.location, item.target, str(destination)))
-    return tuple(saved)
+    return tuple(
+        _snapshot_item(item, directory / f"{index}.bin")
+        for index, item in enumerate(items)
+    )
+
+
+def _snapshot_item(item: Shortcut, destination: Path) -> Shortcut:
+    source = Path(item.location)
+    if not source.is_file():
+        return item
+    try:
+        _replace_snapshot(source, destination)
+    except OSError as exc:
+        LOGGER.warning(
+            "Could not snapshot shortcut %s to %s: %s",
+            source,
+            destination,
+            exc,
+        )
+        return item
+    return Shortcut(item.location, item.target, str(destination))
+
+
+def _replace_snapshot(source: Path, destination: Path) -> None:
+    """Store shortcut bytes without the source file's attributes."""
+    _clear_read_only(destination)
+    destination.unlink(missing_ok=True)
+    shutil.copyfile(source, destination)
+
+
+def _clear_read_only(path: Path) -> None:
+    """Allow replacement of a snapshot left read-only by an older copy."""
+    if not path.is_file():
+        return
+    mode = path.stat().st_mode
+    if mode & stat.S_IWRITE:
+        return
+    LOGGER.info("Clearing read-only attribute on snapshot %s", path)
+    path.chmod(mode | stat.S_IWRITE)
 
 
 def is_portable_target(target: str, portable_roots: tuple[str, ...]) -> bool:

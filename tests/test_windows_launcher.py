@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 from pathlib import Path
+import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -13,14 +16,19 @@ import pytest
 from cursor_portable.constants import HOME_BACKUP_SUFFIX
 from cursor_portable.launcher import headless
 from cursor_portable.launcher.headless import HEADLESS_ENV, notify_headless
+import cursor_portable.launcher.host_watch as host_watch
 from cursor_portable.launcher.host_watch import write_managed_shortcut
 from cursor_portable.launcher.links import DirectoryLinker
 from cursor_portable.launcher.path_store import MemoryPathStore
 from cursor_portable.launcher.session import LaunchHooks, run_launch
+from cursor_portable.launcher.shortcuts import Shortcut, with_snapshots
 from cursor_portable.models import HostSystem, InstallScope, ProductKind
+import cursor_portable.repack.copy_tree as copy_tree_module
 from cursor_portable.repack.launchers import windows_launcher_text
 from cursor_portable.repack.layout import StickLayout
 from cursor_portable.repack.meta import write_version_file
+import cursor_portable.runtime as runtime
+from cursor_portable.runtime import no_console_flag
 
 _STUB = r"""
 using System;
@@ -408,6 +416,159 @@ def test_locked_home_folder_is_left_in_place(
     assert not Path(str(home) + HOME_BACKUP_SUFFIX).exists()
     assert store.value == r"C:\Windows"
     assert not (cache / ".pending-sync").exists()
+
+
+def test_snapshot_replaces_read_only_file(tmp_path: Path) -> None:
+    source = tmp_path / "menu.lnk"
+    source.write_bytes(b"shortcut-bytes")
+    directory = tmp_path / "shortcut-snapshots"
+    directory.mkdir()
+    previous = directory / "0.bin"
+    previous.write_bytes(b"stale")
+    try:
+        _mark_locked(source)
+        _mark_locked(previous)
+        saved = with_snapshots((Shortcut(str(source), r"C:\Cursor.exe"),), directory)
+        snapshot = Path(saved[0].snapshot)
+        assert snapshot.read_bytes() == b"shortcut-bytes"
+        assert snapshot.stat().st_mode & stat.S_IWRITE
+        again = with_snapshots((Shortcut(str(source), r"C:\Cursor.exe"),), directory)
+        replaced = Path(again[0].snapshot)
+        assert replaced.read_bytes() == b"shortcut-bytes"
+        assert replaced.stat().st_mode & stat.S_IWRITE
+    finally:
+        _mark_writable(source)
+        _mark_writable(previous)
+
+
+def test_snapshot_skips_a_denied_shortcut(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    source = tmp_path / "menu.lnk"
+    source.write_bytes(b"shortcut-bytes")
+    other = tmp_path / "other.lnk"
+    other.write_bytes(b"other")
+    real_copy = shutil.copyfile
+
+    def fail_menu(src: Path | str, dst: Path | str) -> None:
+        if Path(src).name == "menu.lnk":
+            raise PermissionError(13, "Permission denied", str(dst))
+        real_copy(src, dst)
+
+    monkeypatch.setattr(
+        "cursor_portable.launcher.shortcuts.shutil.copyfile",
+        fail_menu,
+    )
+    caplog.set_level("WARNING")
+    saved = with_snapshots(
+        (
+            Shortcut(str(source), r"C:\Old.exe"),
+            Shortcut(str(other), r"C:\Other.exe"),
+            Shortcut(str(tmp_path / "gone.lnk"), r"C:\Gone.exe"),
+        ),
+        tmp_path / "snaps",
+    )
+    assert saved[0].snapshot == ""
+    assert saved[0].target == r"C:\Old.exe"
+    assert Path(saved[1].snapshot).read_bytes() == b"other"
+    assert saved[2].snapshot == ""
+    assert "menu.lnk" in caplog.text
+
+
+def _mark_locked(path: Path) -> None:
+    path.chmod(stat.S_IREAD)
+    # Read-only, system, and archive: an older copy2 stored these on the snapshot.
+    _set_windows_attributes(path, 0x1 | 0x4 | 0x20)
+
+
+def _mark_writable(path: Path) -> None:
+    if not path.exists():
+        return
+    _set_windows_attributes(path, 0x20)
+    path.chmod(stat.S_IWRITE)
+
+
+def _set_windows_attributes(path: Path, attributes: int) -> None:
+    if os.name != "nt":
+        return
+    windll = getattr(ctypes, "windll", None)
+    kernel = None if windll is None else getattr(windll, "kernel32", None)
+    setter = None if kernel is None else getattr(kernel, "SetFileAttributesW", None)
+    if setter is None:
+        return
+    if not setter(str(path), attributes):
+        raise OSError(f"Could not set attributes on {path}")
+
+
+def test_no_console_flag_follows_the_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime, "PLATFORM", "win32")
+    assert no_console_flag() == 0x08000000
+    monkeypatch.setattr(runtime, "PLATFORM", "linux")
+    assert no_console_flag() == 0
+
+
+def test_watcher_probe_opens_no_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runtime, "PLATFORM", "win32")
+    captured = _capture_creation_flags(
+        monkeypatch, "cursor_portable.launcher.host_watch.subprocess.run"
+    )
+    assert host_watch._run(["tasklist"]) == ""  # pylint: disable=protected-access
+    assert captured["flags"] == 0x08000000
+
+
+def test_junction_opens_no_console(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runtime, "PLATFORM", "win32")
+    monkeypatch.setattr("cursor_portable.launcher.links.is_windows", lambda: True)
+    captured = _capture_creation_flags(
+        monkeypatch, "cursor_portable.launcher.links.subprocess.run"
+    )
+    target = tmp_path / "target"
+    target.mkdir()
+    assert DirectoryLinker().create(tmp_path / "link", target) is None
+    assert captured["flags"] == 0x08000000
+
+
+def test_robocopy_opens_no_console(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "keep.txt").write_text("keep", encoding="utf-8")
+    monkeypatch.setattr(runtime, "PLATFORM", "win32")
+    monkeypatch.setattr(copy_tree_module, "is_windows", lambda: True)
+    monkeypatch.setattr(
+        copy_tree_module.shutil,
+        "which",
+        lambda name: "robocopy" if name == "robocopy" else None,
+    )
+    captured = _capture_creation_flags(
+        monkeypatch, "cursor_portable.repack.copy_tree.subprocess.run"
+    )
+    assert copy_tree_module.copy_tree(source, tmp_path / "out") == 1
+    assert captured["flags"] == 0x08000000
+
+
+def _capture_creation_flags(
+    monkeypatch: pytest.MonkeyPatch, target: str
+) -> dict[str, int]:
+    captured: dict[str, int] = {}
+
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        flags = kwargs.get("creationflags", 0)
+        assert isinstance(flags, int)
+        captured["flags"] = flags
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(target, fake_run)
+    return captured
 
 
 def _wait_for_log(path: Path) -> list[str]:

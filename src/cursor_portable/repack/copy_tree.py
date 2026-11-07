@@ -8,7 +8,7 @@ import shutil
 import subprocess
 
 from cursor_portable.constants import UNINSTALLER_NAMES
-from cursor_portable.runtime import is_windows
+from cursor_portable.runtime import is_windows, no_console_flag
 
 LOGGER = logging.getLogger(__name__)
 _BULK_FILE_COUNT = 32
@@ -103,6 +103,8 @@ def _robocopy(
             check=False,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
+            creationflags=no_console_flag(),
         )
     except OSError as exc:
         LOGGER.error("Could not start robocopy: %s", exc)
@@ -128,7 +130,12 @@ def _tar_copy(
     for name in sorted(skip_root_files):
         command.extend(["--exclude", f"./{name}"])
     try:
-        created = subprocess.Popen(command, stdout=subprocess.PIPE)
+        created = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            creationflags=no_console_flag(),
+        )
     except OSError as exc:
         LOGGER.error("Could not start tar: %s", exc)
         return False
@@ -138,6 +145,7 @@ def _tar_copy(
         check=False,
         capture_output=True,
         text=True,
+        creationflags=no_console_flag(),
     )
     if created.stdout is not None:
         created.stdout.close()

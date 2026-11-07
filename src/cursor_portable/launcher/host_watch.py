@@ -16,7 +16,7 @@ from cursor_portable.launcher.reports import (
     parse_tasklist_csv,
 )
 from cursor_portable.launcher.shortcuts import Shortcut
-from cursor_portable.runtime import is_windows
+from cursor_portable.runtime import is_windows, no_console_flag
 from cursor_portable.shell import powershell_file_command
 
 LOGGER = logging.getLogger(__name__)
@@ -254,6 +254,8 @@ def _run(command: list[str]) -> str | None:
         check=False,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
+        creationflags=no_console_flag(),
     )
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()

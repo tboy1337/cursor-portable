@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 
 from cursor_portable.failure import Failure
-from cursor_portable.runtime import is_windows
+from cursor_portable.runtime import is_windows, no_console_flag
 
 LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +35,8 @@ class DirectoryLinker:
                 check=False,
                 capture_output=True,
                 text=True,
+                stdin=subprocess.DEVNULL,
+                creationflags=no_console_flag(),
             )
             if completed.returncode != 0:
                 detail = completed.stderr.strip() or completed.stdout.strip()
