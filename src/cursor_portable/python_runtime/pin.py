@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 PYTHON_MINOR = "3.14"
 
 ASSET_MARKERS = {
@@ -12,6 +14,19 @@ ASSET_MARKERS = {
     "linux-x64": "x86_64-unknown-linux-gnu-install_only.tar.gz",
     "linux-arm64": "aarch64-unknown-linux-gnu-install_only.tar.gz",
 }
+
+
+def python_tree_matches(folder: Path) -> bool:
+    """Return whether ``folder`` is a relocatable build of ``PYTHON_MINOR``.
+
+    Windows builds ship ``python314.dll`` beside ``python.exe``. POSIX builds
+    ship the standard library in ``lib/python3.14``. ``python3.dll`` and
+    ``bin/python3`` exist for every minor, so those names are not a version.
+    """
+    if (folder / "python.exe").is_file():
+        return (folder / f"python{PYTHON_MINOR.replace('.', '')}.dll").is_file()
+    library = folder / "lib" / f"python{PYTHON_MINOR}"
+    return (folder / "bin" / "python3").is_file() and library.is_dir()
 
 
 def select_python_asset(names: tuple[str, ...], marker: str) -> str | None:

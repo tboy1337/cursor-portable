@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.metadata
+from io import BytesIO
 from pathlib import Path
 import subprocess
+import tarfile
 
 import pytest
 
@@ -17,7 +19,17 @@ from cursor_portable._version import (
     write_version_stamp,
 )
 from cursor_portable.failure import Failure
+import cursor_portable.install.acquire as acquire
 from cursor_portable.install.acquire import copy_tool_package
+from cursor_portable.install.apply import install_tree
+from cursor_portable.models import (
+    HostSystem,
+    InstallChoices,
+    InstallScope,
+    ProductKind,
+    ProfileMode,
+)
+from cursor_portable.repack.layout import StickLayout
 from scripts.ci_pack import _copy_package, _github_headers, tkinter_support
 from scripts.ci_publish import main as publish_main
 from scripts.ci_release import (
@@ -387,3 +399,98 @@ def test_version_comes_only_from_pyproject(
     assert (packed / "cursor_portable" / "VERSION").read_text(
         encoding="utf-8"
     ).strip() == (__version__)
+
+
+def test_cached_python_from_another_minor_is_replaced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def refuse(*_args: object, **_kwargs: object) -> Failure:
+        calls.append("download")
+        return Failure("python", "no")
+
+    cached = tmp_path / "cached" / "python"
+    cached.mkdir(parents=True)
+    (cached / "python.exe").write_bytes(b"old")
+    (cached / "python313.dll").write_bytes(b"old")
+    (cached / "python3.dll").write_bytes(b"abi")
+    monkeypatch.setattr(acquire, "_python_archive", refuse)
+    assert isinstance(
+        acquire.ensure_python(HostSystem.WINDOWS, tmp_path / "cached", arch="x64"),
+        Failure,
+    )
+    assert calls == ["download"]
+    assert (cached / "python313.dll").is_file()
+    kept = tmp_path / "kept" / "python"
+    kept.mkdir(parents=True)
+    (kept / "python.exe").write_bytes(b"keep")
+    (kept / "python314.dll").write_bytes(b"keep")
+    assert (
+        acquire.ensure_python(HostSystem.WINDOWS, tmp_path / "kept", arch="x64") is None
+    )
+    assert calls == ["download"]
+    archive = tmp_path / "cpython-3.14.tar.gz"
+    with tarfile.open(archive, "w:gz") as handle:
+        for name, body in (
+            ("python/python.exe", b"new"),
+            ("python/python314.dll", b"dll"),
+        ):
+            payload = BytesIO(body)
+            info = tarfile.TarInfo(name)
+            info.size = len(body)
+            handle.addfile(info, payload)
+    monkeypatch.setattr(acquire, "_python_archive", lambda *_args, **_kwargs: archive)
+    assert (
+        acquire.ensure_python(HostSystem.WINDOWS, tmp_path / "cached", arch="x64")
+        is None
+    )
+    assert (cached / "python314.dll").read_bytes() == b"dll"
+    assert not (cached / "python313.dll").exists()
+    posix = tmp_path / "posix" / "python"
+    (posix / "bin").mkdir(parents=True)
+    (posix / "bin" / "python3").write_bytes(b"old")
+    (posix / "lib" / "python3.13").mkdir(parents=True)
+    monkeypatch.setattr(acquire, "_python_archive", refuse)
+    assert isinstance(
+        acquire.ensure_python(HostSystem.LINUX, tmp_path / "posix", arch="x64"),
+        Failure,
+    )
+
+
+def test_install_replaces_python_from_another_minor(tmp_path: Path) -> None:
+    app = tmp_path / "app" / "resources" / "app"
+    app.mkdir(parents=True)
+    (app / "product.json").write_text('{"version": "9"}', encoding="utf-8")
+    source = tmp_path / "python-src"
+    source.mkdir()
+    (source / "python.exe").write_bytes(b"new")
+    (source / "python314.dll").write_bytes(b"dll")
+    layout = StickLayout.from_mount(tmp_path / "mount")
+    layout.python.mkdir(parents=True)
+    (layout.python / "python.exe").write_bytes(b"old")
+    (layout.python / "python313.dll").write_bytes(b"old")
+    (layout.python / "stale.txt").write_text("stale", encoding="utf-8")
+    choices = InstallChoices(
+        product=ProductKind.IDE,
+        scope=InstallScope.USER,
+        profile=ProfileMode.FRESH,
+        volume_device="E:",
+        typed_label="STICK",
+    )
+    assert (
+        install_tree(
+            tmp_path / "app",
+            layout,
+            choices,
+            HostSystem.WINDOWS,
+            sources=None,
+            cursor_running=False,
+            python_source=source,
+        )
+        is None
+    )
+    assert (layout.python / "python314.dll").read_bytes() == b"dll"
+    assert not (layout.python / "python313.dll").exists()
+    assert not (layout.python / "stale.txt").exists()

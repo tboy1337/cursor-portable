@@ -539,9 +539,10 @@ def test_python_and_cli_archives_refuse_bad_files(
     binary.parent.mkdir(parents=True)
     binary.write_bytes(b"py")
     assert acquire._python_root(root) == root / "python"
-    ready = tmp_path / "ready" / "python" / "bin"
-    ready.mkdir(parents=True)
-    (ready / "python3").write_bytes(b"py")
+    ready = tmp_path / "ready" / "python"
+    (ready / "bin").mkdir(parents=True)
+    (ready / "bin" / "python3").write_bytes(b"py")
+    (ready / "lib" / "python3.14").mkdir(parents=True)
     assert acquire.ensure_python(HostSystem.LINUX, tmp_path / "ready") is None
     patch(
         acquire.UrllibClient,

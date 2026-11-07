@@ -34,6 +34,7 @@ from cursor_portable.models import (
 from cursor_portable.python_runtime.pin import (
     ASSET_MARKERS,
     PYTHON_MINOR,
+    python_tree_matches,
     select_python_asset,
 )
 from cursor_portable.repack.archive import run_command
@@ -164,12 +165,19 @@ def ensure_python(
     arch: str | None = None,
     progress: Progress | None = None,
 ) -> Failure | None:
-    """Download a relocatable CPython when ``destination/python`` is missing."""
+    """Download the pinned relocatable CPython into ``destination/python``."""
     folder = destination / "python"
-    if _python_ready(folder):
+    if python_tree_matches(folder):
         LOGGER.info("Using the Python already in %s", folder)
         _report(progress, "Using the portable Python already downloaded")
         return None
+    if _python_present(folder):
+        LOGGER.info(
+            "Replacing Python in %s because it is not CPython %s",
+            folder,
+            PYTHON_MINOR,
+        )
+        _report(progress, f"Replacing portable Python with CPython {PYTHON_MINOR}")
     chosen = arch
     if not chosen:
         detected = host_arch()
@@ -337,7 +345,7 @@ def _ide_folder(system: HostSystem, scope: InstallScope) -> str:
     return "ide"
 
 
-def _python_ready(folder: Path) -> bool:
+def _python_present(folder: Path) -> bool:
     return (folder / "python.exe").is_file() or (folder / "bin" / "python3").is_file()
 
 

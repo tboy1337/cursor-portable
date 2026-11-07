@@ -22,6 +22,7 @@ from cursor_portable.models import (
 from cursor_portable.profile.copy_profile import copy_profile
 from cursor_portable.profile.settings import set_interpreter
 from cursor_portable.profile.sources import ProfileSources
+from cursor_portable.python_runtime.pin import PYTHON_MINOR, python_tree_matches
 from cursor_portable.repack.copy_tree import copy_tree
 from cursor_portable.repack.launchers import unix_launcher_text, windows_launcher_text
 from cursor_portable.repack.layout import StickLayout, ensure_data_dirs
@@ -98,6 +99,9 @@ def _copy_products(
     ):
         _copy_named(cli_source, layout.cli, "Cursor CLI", layout.root, progress)
     if python_source is not None and python_source.is_dir():
+        prepared = _prepare_python_destination(layout.python)
+        if prepared is not None:
+            return prepared
         _copy_named(
             python_source,
             layout.python,
@@ -108,6 +112,22 @@ def _copy_products(
     if tool_source is not None and tool_source.is_dir():
         _copy_named(tool_source, layout.tool, "the launcher", layout.root, progress)
     return version, commit
+
+
+def _prepare_python_destination(destination: Path) -> Failure | None:
+    """Remove a cached interpreter that is not the pinned CPython minor."""
+    if not destination.exists() or python_tree_matches(destination):
+        return None
+    LOGGER.info(
+        "Removing %s because it is not CPython %s",
+        destination,
+        PYTHON_MINOR,
+    )
+    try:
+        shutil.rmtree(destination)
+    except OSError as exc:
+        return Failure("python", f"Could not replace Python in {destination}: {exc}")
+    return None
 
 
 def _finish_profile(
