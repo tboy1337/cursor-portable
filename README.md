@@ -11,6 +11,7 @@ The drive uses NTFS on Windows, APFS on macOS, and ext4 on Linux. It keeps that 
 pip install cursor-portable
 python -m cursor_portable
 ```
+Prefer uv? `uv pip install cursor-portable`, then `python -m cursor_portable`.
 
 ## **Launching**
 One launcher lives on the drive (`CursorPortable.cmd` on Windows, `cursor-portable` on macOS/Linux). It runs Cursor from a local cache, points `~/.cursor` at the portable profile for the session, and restores your PATH and `~/.cursor` when Cursor exits.
