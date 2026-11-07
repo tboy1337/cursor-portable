@@ -8,11 +8,16 @@ The drive uses NTFS on Windows, APFS on macOS, and ext4 on Linux. It keeps that 
 
 ## From this repository
 
-The package needs Python 3.11 through 3.15. `uv sync` installs it. The wizard uses tkinter from that Python.
+The package needs Python 3.11 through 3.15. `uv sync` or `python -m pip install .` installs it. The wizard uses tkinter from that Python.
 
 ```bash
 uv sync
 uv run python -m cursor_portable
+```
+
+```bash
+python -m pip install .
+python -m cursor_portable
 ```
 
 The dev extra and `uv run python scripts/verify.py` are described in [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -40,7 +45,7 @@ The launcher copies the application to a local cache for that drive and points `
 
 Uninstall removes the cache, the PATH entry, and the shortcuts this tool created. The removable drive is left unchanged. Uninstall refuses to run while that Cursor session is still open.
 
-Use the Uninstall button in the setup window, or run `uv run python -m cursor_portable uninstall`.
+Use the Uninstall button in the setup window. After `uv sync`, run `uv run python -m cursor_portable uninstall`. After `python -m pip install .`, run `python -m cursor_portable uninstall`.
 
 ## Layout
 
