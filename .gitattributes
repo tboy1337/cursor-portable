@@ -20,6 +20,7 @@ mypy.ini text eol=lf
 scripts/launchers/CursorPortable.cmd text eol=crlf
 scripts/launchers/cursor-portable text eol=lf
 scripts/launchers/*.ps1 text eol=lf
+docker/Dockerfile text eol=lf
 
 *.exe binary
 *.dll binary
