@@ -34,10 +34,7 @@ PYTHON_RELEASE = (
 )
 SFX_SDK = "https://github.com/ip7z/7zip/releases/download/24.09/lzma2409.7z"
 SFX_SHA256 = "79b39f10b7b69eea293caa90c3e7ea07faf8f01f8ae9db1bb1b90c092375e5f3"
-# An x64 Windows runner cannot execute the arm64 interpreter it packs.
-_CROSS_PLATFORM = {("windows", "arm64"): "aarch64-pc-windows-msvc"}
 LOGGER = logging.getLogger(__name__)
-PYSIDE_REQUIREMENT = "pyside6==6.12.0"
 
 _HOST = {
     "windows": HostSystem.WINDOWS,
@@ -148,7 +145,10 @@ def pack(system_name: str, arch: str, output: Path) -> int:
         outer = work / "outer"
         outer.mkdir()
         shutil.copytree(python_root, outer / "python")
-        _install_wizard_qt(outer / "python", system_name, arch)
+        _require(
+            tkinter_support(outer / "python"),
+            "bundled Python includes tkinter",
+        )
         _copy_package(_site_packages(outer / "python"))
         _bundle_extractors(host, outer / "tools")
         setup = output / setup_asset_name(host, arch)
@@ -224,73 +224,40 @@ def _github_headers() -> dict[str, str]:
     }
 
 
-def _python_interpreter(python_root: Path) -> Path:
-    interpreter = python_root / "python.exe"
-    if interpreter.is_file():
-        return interpreter
-    return python_root / "bin" / "python3"
+def _first_file(root: Path, patterns: tuple[str, ...]) -> Path | None:
+    for pattern in patterns:
+        matches = sorted(root.glob(pattern))
+        if matches:
+            return matches[0]
+    return None
 
 
-def cross_qt_command(
-    site_packages: Path, system_name: str, arch: str, *, uv: str | None = None
-) -> list[str] | Failure | None:
-    """Return a host command that installs Qt wheels for another CPU."""
-    platform = _CROSS_PLATFORM.get((system_name, arch))
-    if platform is None:
-        return None
-    resolved = uv if uv is not None else shutil.which("uv")
-    if not resolved:
-        return Failure("command", "uv is not on PATH")
-    return [
-        resolved,
-        "pip",
-        "install",
-        "--target",
-        str(site_packages),
-        "--python-platform",
-        platform,
-        "--python-version",
-        PYTHON_MINOR,
-        "--only-binary",
-        ":all:",
-        "--link-mode",
-        "copy",
-        "--no-config",
-        PYSIDE_REQUIREMENT,
-    ]
-
-
-def _install_qt_for_other_cpu(
-    python_root: Path,
-    system_name: str,
-    arch: str,
-    failure: Failure,
-) -> Failure | None:
-    """Install Qt wheels when the packed interpreter cannot run here."""
-    cross = cross_qt_command(_site_packages(python_root), system_name, arch)
-    if cross is None:
-        return failure
-    if isinstance(cross, Failure):
-        return cross
-    LOGGER.warning(
-        "Could not run the packed interpreter (%s); installing %s wheels with uv",
-        failure.message,
-        arch,
+def tkinter_support(python_root: Path) -> Failure | None:
+    """Return a failure when this interpreter tree has no tkinter."""
+    module = _first_file(
+        python_root,
+        (
+            "Lib/tkinter/__init__.py",
+            "lib/tkinter/__init__.py",
+            "lib/python*/tkinter/__init__.py",
+        ),
     )
-    return run_command(cross)
-
-
-def _install_wizard_qt(python_root: Path, system_name: str, arch: str) -> None:
-    interpreter = _python_interpreter(python_root)
-    failure = run_command(
-        [str(interpreter), "-m", "pip", "install", PYSIDE_REQUIREMENT]
+    extension = _first_file(
+        python_root,
+        (
+            "DLLs/_tkinter.*",
+            "lib-dynload/_tkinter.*",
+            "lib/python*/lib-dynload/_tkinter.*",
+        ),
     )
-    if failure is None:
-        return
-    _require(
-        _install_qt_for_other_cpu(python_root, system_name, arch, failure),
-        "install PySide6 for the wizard",
-    )
+    if module is None or extension is None:
+        LOGGER.error("Packed Python at %s does not include tkinter", python_root)
+        return Failure(
+            "tkinter",
+            f"The packed Python under {python_root} does not include tkinter.",
+        )
+    LOGGER.info("Packed Python includes tkinter (%s)", extension.name)
+    return None
 
 
 def _bundle_extractors(host: HostSystem, tools: Path) -> None:

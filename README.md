@@ -8,7 +8,7 @@ The drive uses NTFS on Windows, APFS on macOS, and ext4 on Linux. It keeps that 
 
 ## From this repository
 
-The package needs Python 3.11 through 3.15. `uv sync` installs it and PySide6.
+The package needs Python 3.11 through 3.15. `uv sync` installs it. The wizard uses tkinter from that Python.
 
 ```bash
 uv sync

@@ -1,6 +1,6 @@
 # Architecture
 
-The Qt wizard collects choices and calls into modules that do not import Qt.
+The tkinter wizard collects choices and calls into modules that do not import tkinter.
 
 - `download` resolves official HTTPS URLs, refuses a non-HTTPS redirect, and checks size. SHA-256 is checked when a digest is published. The CLI install script is read as text and is not executed. Cursor itself is downloaded when a person runs the wizard.
 - `repack` strips `product.json` `target` on the copy that person downloaded, writes launchers, and builds a 7-Zip self-extractor that contains this tool and Python. macOS and Linux get a bash stub with a bundled extractor because 7-Zip has no self-extractor for those systems.

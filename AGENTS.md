@@ -1,6 +1,6 @@
 # Agent guide
 
-Run `uv run python scripts/verify.py` before handing work back. The gate covers autopep8, isort, pyproject-fmt, black, yamllint, mypy, pylint, bandit, complexipy, pip-audit, blinter, shellcheck, and pytest. On Windows it also runs PSScriptAnalyzer and Pester against the generated launcher scripts. Use the project environment: a system Python does not have this package or PySide6 installed.
+Run `uv run python scripts/verify.py` before handing work back. The gate covers autopep8, isort, pyproject-fmt, black, yamllint, mypy, pylint, bandit, complexipy, pip-audit, blinter, shellcheck, and pytest. On Windows it also runs PSScriptAnalyzer and Pester against the generated launcher scripts. Use the project environment: a system Python does not have this package installed. The wizard uses tkinter from that environment.
 
 Library code logs through `logging`. Expected refusals return `Failure` instead of raising. Do not modify an installed Cursor. Disk format and repair stay behind `guard_volume` and a typed label.
 

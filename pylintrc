@@ -3,7 +3,7 @@ jobs = 1
 
 [BASIC]
 no-docstring-rgx = ^(_|test)
-method-rgx = (([a-z_][a-z0-9_]{2,40})|(initializePage|validatePage|nextId|OpenKey|QueryValueEx|SetValueEx))
+method-rgx = (([a-z_][a-z0-9_]{2,40})|(OpenKey|QueryValueEx|SetValueEx))
 const-rgx = (([A-Z_][A-Z0-9_]*)|(__.*__)|winreg)
 
 [DESIGN]
@@ -15,10 +15,6 @@ max-module-lines = 1300
 max-positional-arguments = 8
 max-returns = 8
 max-statements = 110
-
-[TYPECHECK]
-ignored-modules = PySide6,
-                  PySide6.QtWidgets
 
 [MESSAGES CONTROL]
 disable = raw-checker-failed,

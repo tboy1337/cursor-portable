@@ -18,7 +18,7 @@ from cursor_portable._version import (
 )
 from cursor_portable.failure import Failure
 from cursor_portable.install.acquire import copy_tool_package
-from scripts.ci_pack import _copy_package, _github_headers, cross_qt_command
+from scripts.ci_pack import _copy_package, _github_headers, tkinter_support
 from scripts.ci_publish import main as publish_main
 from scripts.ci_release import (
     ReleaseDecision,
@@ -212,17 +212,35 @@ def test_github_release_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "auth required" in refused.message
 
 
-def test_cross_qt_install_is_only_for_windows_arm64(tmp_path: Path) -> None:
-    site = tmp_path / "site-packages"
-    assert cross_qt_command(site, "windows", "x64", uv="uv") is None
-    command = cross_qt_command(site, "windows", "arm64", uv="uv")
-    assert isinstance(command, list)
-    assert command[:3] == ["uv", "pip", "install"]
-    assert "aarch64-pc-windows-msvc" in command
-    assert "3.14" in command
-    assert str(site) in command
-    missing = cross_qt_command(site, "windows", "arm64", uv="")
-    assert isinstance(missing, Failure)
+def _touch(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+
+
+def test_packed_python_must_include_tkinter(tmp_path: Path) -> None:
+    windows = tmp_path / "windows"
+    _touch(windows / "Lib" / "tkinter" / "__init__.py")
+    _touch(windows / "DLLs" / "_tkinter.pyd")
+    assert tkinter_support(windows) is None
+
+    library = tmp_path / "library"
+    _touch(library / "lib" / "tkinter" / "__init__.py")
+    _touch(library / "lib-dynload" / "_tkinter.so")
+    assert tkinter_support(library) is None
+
+    posix = tmp_path / "posix"
+    _touch(posix / "lib" / "python3.14" / "tkinter" / "__init__.py")
+    _touch(posix / "lib" / "python3.14" / "lib-dynload" / "_tkinter.so")
+    assert tkinter_support(posix) is None
+
+    (windows / "DLLs" / "_tkinter.pyd").unlink()
+    without_extension = tkinter_support(windows)
+    assert isinstance(without_extension, Failure)
+    assert without_extension.code == "tkinter"
+    extension_only = tmp_path / "extension"
+    _touch(extension_only / "DLLs" / "_tkinter.pyd")
+    assert isinstance(tkinter_support(extension_only), Failure)
+    assert isinstance(tkinter_support(tmp_path / "absent"), Failure)
 
 
 def test_github_pack_headers(monkeypatch: pytest.MonkeyPatch) -> None:

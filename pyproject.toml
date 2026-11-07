@@ -24,7 +24,6 @@ classifiers = [
   "Programming Language :: Python :: 3.15",
   "Typing :: Typed",
 ]
-dependencies = [ "pyside6" ]
 optional-dependencies.dev = [
   "autopep8",
   "bandit",
@@ -39,7 +38,6 @@ optional-dependencies.dev = [
   "pytest",
   "pytest-cov",
   "pytest-mock",
-  "pytest-qt",
   "pytest-timeout",
   "pytest-xdist",
   "shellcheck-py",

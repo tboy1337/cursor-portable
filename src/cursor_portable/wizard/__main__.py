@@ -1,4 +1,4 @@
-"""``python -m cursor_portable.wizard`` opens the Qt wizard."""
+"""``python -m cursor_portable.wizard`` opens the tkinter wizard."""
 
 from cursor_portable.cli.live import payload_directory, wizard_callbacks
 from cursor_portable.logging_config import configure_cli_logging
