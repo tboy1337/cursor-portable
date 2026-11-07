@@ -15,7 +15,14 @@ import sys
 
 LOGGER = logging.getLogger("run_docker_session")
 _IMAGE = "cursor-portable-session"
-_SESSION_SCRIPT = "/work/tests/shell/run_docker_session.sh"
+# Mirrored in tests/shell/run_docker_session.sh.
+_SESSION = """#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "${HOME:?}" /tmp/uv-cache
+uv python install 3.13
+uv sync --extra dev --frozen --no-editable --python 3.13
+uv run --python 3.13 python scripts/docker_session.py
+"""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,15 +33,11 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s %(message)s",
     )
     root = Path(__file__).resolve().parent.parent
-    script = root / "tests" / "shell" / "run_docker_session.sh"
-    if not script.is_file():
-        LOGGER.error("Missing session script %s", script)
-        return 1
-    LOGGER.info("Container session script %s", script)
+    LOGGER.info("Container session runs the in-module bash script")
     built = _run(_build_command(root))
     if built != 0:
         return built
-    return _run(_container_command(root))
+    return _run(_container_command(root), _SESSION)
 
 
 def _build_command(root: Path) -> list[str]:
@@ -72,14 +75,14 @@ def _container_command(root: Path) -> list[str]:
         "HOME=/tmp/session-home",
         _IMAGE,
         "bash",
-        _SESSION_SCRIPT,
+        "-s",
     ]
 
 
-def _run(command: list[str]) -> int:
+def _run(command: list[str], script: str | None = None) -> int:
     LOGGER.info("Running %s", " ".join(command))
     try:
-        completed = subprocess.run(command, check=False)
+        completed = subprocess.run(command, check=False, input=script, text=True)
     except OSError as exc:
         LOGGER.error("Could not run %s: %s", command[0], exc)
         return 1

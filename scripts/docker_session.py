@@ -207,10 +207,21 @@ def _require_stick_bin(bin_dir: Path) -> str | None:
     return None
 
 
+# Mirrored in tests/shell/session-stub.sh.
+_SESSION_STUB = """#!/bin/sh
+set -eu
+ready="${CURSOR_SESSION_READY:?}"
+stop="${CURSOR_SESSION_STOP:?}"
+printf '%s\\n' ready > "$ready"
+while [ ! -f "$stop" ]; do
+    sleep 0.2
+done
+"""
+
+
 def _session_stub() -> str:
-    path = Path(__file__).resolve().parents[1] / "tests" / "shell" / "session-stub.sh"
-    LOGGER.info("Using session stub %s", path)
-    return path.read_text(encoding="utf-8")
+    LOGGER.info("Using the in-module session stub")
+    return _SESSION_STUB
 
 
 def _write_stub(app: Path) -> None:

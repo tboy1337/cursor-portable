@@ -1,4 +1,4 @@
-"""Packaged PowerShell and shell scripts are the files the program runs."""
+"""Shell text stays in the Python modules. tests/shell mirrors it for the linters."""
 
 from __future__ import annotations
 
@@ -9,28 +9,29 @@ import time
 
 import pytest
 
+from cursor_portable.disk.listing import _VOLUME_LISTING, windows_probe_command
 from cursor_portable.disk import spawn
-from cursor_portable.launcher.path_edit import path_block
+from cursor_portable.disk.spawn import _ELEVATED
+from cursor_portable.launcher.host_watch import _SHORTCUT_LISTING, _SHORTCUT_WRITER
+from cursor_portable.launcher.path_edit import _PREPEND, path_block
 from cursor_portable.repack import sfx
-from cursor_portable.repack.sfx import build_posix_sfx
-from cursor_portable.shell import powershell_file_command, shell_text
-from scripts.docker_session import _write_stub
-from scripts.run_docker_session import _container_command
+from cursor_portable.repack.sfx import _POSIX, build_posix_sfx
+from scripts.docker_session import _SESSION_STUB, _write_stub
+from scripts.run_docker_session import _SESSION, _container_command
 from scripts.verify import _shellcheck_groups
 from tests.test_launcher_scripts import _bash_executable, _posix_directory
 
 _SHELL = Path(__file__).resolve().parent / "shell"
-_RUNTIME = frozenset(
-    {
-        "Get-VolumeListing.ps1",
-        "Get-WindowsShortcuts.ps1",
-        "Invoke-ElevatedCommand.ps1",
-        "Set-WindowsShortcut.ps1",
-        "posix-extractor.sh",
-        "prepend-path.sh",
-    }
-)
-_CHECKED_IN = _RUNTIME | {"run_docker_session.sh", "session-stub.sh"}
+_MIRRORS = {
+    "Get-VolumeListing.ps1": _VOLUME_LISTING,
+    "Get-WindowsShortcuts.ps1": _SHORTCUT_LISTING,
+    "Invoke-ElevatedCommand.ps1": _ELEVATED,
+    "Set-WindowsShortcut.ps1": _SHORTCUT_WRITER,
+    "posix-extractor.sh": _POSIX,
+    "prepend-path.sh": _PREPEND,
+    "run_docker_session.sh": _SESSION,
+    "session-stub.sh": _SESSION_STUB,
+}
 _FAKE_EXTRACTOR = """#!/bin/sh
 set -eu
 printf '%s\\n' "$@" > "$SFX_LOG"
@@ -47,14 +48,11 @@ exit 0
 """
 
 
-def test_shell_directory_is_the_script_set() -> None:
+def test_checked_in_shell_files_mirror_the_python_text() -> None:
     found = {path.name for path in _SHELL.iterdir() if path.suffix in {".ps1", ".sh"}}
-    assert found == _CHECKED_IN
-
-
-def test_runtime_scripts_match_the_checked_in_files() -> None:
-    for name in sorted(_RUNTIME):
-        assert shell_text(name) == (_SHELL / name).read_text(encoding="utf-8")
+    assert found == set(_MIRRORS)
+    for name, script in _MIRRORS.items():
+        assert script == (_SHELL / name).read_text(encoding="utf-8")
 
 
 def test_shellcheck_covers_checked_in_shell_scripts() -> None:
@@ -72,21 +70,17 @@ def test_powershell_linter_scans_checked_in_scripts() -> None:
     assert "tests\\launchers" in text
 
 
-def test_missing_shell_script_fails() -> None:
-    with pytest.raises(FileNotFoundError):
-        shell_text("missing.ps1")
-
-
 def test_volume_probe_runs_the_packaged_script() -> None:
-    command = powershell_file_command("Get-VolumeListing.ps1")
+    command = windows_probe_command()
     assert command[5] == "-File"
     text = Path(command[-1]).read_text(encoding="utf-8")
+    assert text == _VOLUME_LISTING
     assert "MSFT_Disk" in text
     assert "writable" in text
 
 
 def test_path_block_renders_the_shell_template() -> None:
-    template = shell_text("prepend-path.sh").replace("\r\n", "\n")
+    template = _PREPEND.replace("\r\n", "\n")
     assert template.replace("__SEGMENT__", "/opt/py/bin") in path_block("/opt/py/bin")
     quoted = "/opt/o'\\''bin"
     both = path_block(("/opt/o'bin", "/opt/py/Scripts"))
@@ -99,6 +93,7 @@ def test_session_stub_is_the_shell_file(tmp_path: Path) -> None:
     app = tmp_path / "app"
     _write_stub(app)
     written = (app / "cursor").read_text(encoding="utf-8")
+    assert written == _SESSION_STUB
     assert written == (_SHELL / "session-stub.sh").read_text(encoding="utf-8")
     assert written.startswith("#!/bin/sh\n")
 
@@ -106,8 +101,10 @@ def test_session_stub_is_the_shell_file(tmp_path: Path) -> None:
 def test_docker_session_runs_the_shell_file() -> None:
     root = Path(__file__).resolve().parents[1]
     command = _container_command(root)
-    assert command[-2:] == ["bash", "/work/tests/shell/run_docker_session.sh"]
-    assert (root / "tests" / "shell" / "run_docker_session.sh").is_file()
+    assert command[-2:] == ["bash", "-s"]
+    assert _SESSION == (root / "tests" / "shell" / "run_docker_session.sh").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_elevated_disk_command_uses_the_script(
@@ -147,7 +144,7 @@ def test_posix_renderer_rejects_a_bad_template() -> None:
 def test_posix_template_adds_a_missing_newline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(sfx, "shell_text", lambda _name: "#!/usr/bin/env bash")
+    monkeypatch.setattr(sfx, "_POSIX", "#!/usr/bin/env bash")
     assert sfx._posix_template().endswith("\n")
 
 
@@ -196,11 +193,13 @@ def test_session_stub_waits_until_stop_exists(tmp_path: Path) -> None:
     root = _posix_directory(bash, tmp_path)
     ready = tmp_path / "ready"
     stop = tmp_path / "stop"
+    script = tmp_path / "session-stub.sh"
+    script.write_text(_SESSION_STUB, encoding="utf-8", newline="\n")
     env = os.environ.copy()
     env["CURSOR_SESSION_READY"] = f"{root}/ready"
     env["CURSOR_SESSION_STOP"] = f"{root}/stop"
     process = subprocess.Popen(
-        [bash, str(_SHELL / "session-stub.sh")],
+        [bash, str(script)],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

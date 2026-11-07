@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from cursor_portable.constants import PATH_BLOCK_END, PATH_BLOCK_START
 from cursor_portable.models import HostSystem
-from cursor_portable.shell import shell_text
 
 
 def separator_for(system: HostSystem) -> str:
@@ -49,8 +48,18 @@ def remove_segments(path: str, segments: tuple[str, ...], separator: str) -> str
     return updated
 
 
+# Mirrored in tests/shell/prepend-path.sh.
+_PREPEND = r"""cursor_portable_bin='__SEGMENT__'
+case ":${PATH}:" in
+    *":${cursor_portable_bin}:"*) ;;
+    *) PATH="${cursor_portable_bin}:${PATH}"; export PATH ;;
+esac
+unset cursor_portable_bin
+"""
+
+
 def _assignment_template() -> str:
-    text = shell_text("prepend-path.sh").replace("\r\n", "\n").replace("\r", "\n")
+    text = _PREPEND.replace("\r\n", "\n").replace("\r", "\n")
     if text.endswith("\n"):
         return text
     return f"{text}\n"

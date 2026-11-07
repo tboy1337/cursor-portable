@@ -64,9 +64,55 @@ def _write_windows_launcher(launcher: Path) -> None:
     LOGGER.info("Wrote %s", destination)
 
 
+# Mirrored in tests/shell/Get-WindowsShortcuts.ps1.
+_SHORTCUT_LISTING = r"""$shell = New-Object -ComObject WScript.Shell
+$roots = @(
+    (Join-Path -Path $env:APPDATA -ChildPath 'Microsoft\Windows\Start Menu'),
+    (Join-Path -Path $env:ProgramData -ChildPath 'Microsoft\Windows\Start Menu'),
+    (Join-Path -Path $env:USERPROFILE -ChildPath 'Desktop'),
+    (Join-Path -Path $env:PUBLIC -ChildPath 'Desktop')
+)
+foreach ($root in $roots) {
+    if (-not $root -or -not (Test-Path -LiteralPath $root)) {
+        continue
+    }
+    Get-ChildItem -LiteralPath $root -Filter *.lnk -Recurse -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $shortcut = $shell.CreateShortcut($_.FullName)
+            Write-Output ($_.FullName + '|' + $shortcut.TargetPath)
+        }
+}
+"""
+
+# Mirrored in tests/shell/Set-WindowsShortcut.ps1.
+_SHORTCUT_WRITER = r"""#Requires -Version 5.1
+[CmdletBinding(SupportsShouldProcess = $true)]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string]$Target,
+    [Parameter(Mandatory = $false)]
+    [int]$WindowStyle
+)
+$ErrorActionPreference = 'Stop'
+if (-not $PSCmdlet.ShouldProcess($Path, 'Set shortcut target')) {
+    return
+}
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut($Path)
+$shortcut.TargetPath = $Target
+if ($PSBoundParameters.ContainsKey('WindowStyle')) {
+    $shortcut.WindowStyle = $WindowStyle
+}
+$shortcut.Save()
+"""
+
+
 def windows_shortcut_command() -> list[str]:
     """PowerShell command that prints ``path|target`` lines."""
-    return powershell_file_command("Get-WindowsShortcuts.ps1")
+    LOGGER.info("Reading Windows shortcut targets")
+    return powershell_file_command("Get-WindowsShortcuts.ps1", _SHORTCUT_LISTING)
 
 
 def _shortcut_command(
@@ -76,7 +122,7 @@ def _shortcut_command(
 ) -> list[str]:
     """PowerShell that points one ``.lnk`` file at ``target``."""
     command = [
-        *powershell_file_command("Set-WindowsShortcut.ps1"),
+        *powershell_file_command("Set-WindowsShortcut.ps1", _SHORTCUT_WRITER),
         "-Path",
         location,
         "-Target",
