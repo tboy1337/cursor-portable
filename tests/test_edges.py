@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from io import BytesIO
+import json
 import os
 from pathlib import Path
 import shutil
@@ -25,11 +26,13 @@ from cursor_portable.cli.live import (
 from cursor_portable.disk.commands import DiskPlan, RepairMode, repair_plan
 import cursor_portable.disk.elevation as elevation
 from cursor_portable.disk.elevation import elevation_failure, elevation_ready
+from cursor_portable.disk.guards import guard_volume
 from cursor_portable.disk.listing import (
     load_probed_volumes,
     probe_command,
     volumes_from_diskutil,
     volumes_from_lsblk,
+    windows_probe_command,
 )
 from cursor_portable.disk.probe import parse_volume_json, volumes_from_objects
 from cursor_portable.disk.volume import Volume
@@ -630,6 +633,56 @@ def test_install_payload_and_launch_commands(
         DirectoryLinker(),
         delete_cache=True,
     )
+
+
+def test_windows_usb_dock_counts_as_portable() -> None:
+    rows = (
+        "7|SCSI|External hard disk media|3|1",
+        "17|SCSI|Fixed hard disk media|3|0",
+        "| | |2|1",
+        "|USB|Fixed hard disk media|3|1",
+        "12| | |3|1",
+        "11|IDE|External hard disk media|3|1",
+        "11|IDE|Fixed hard disk media|3|0",
+    )
+    for row in rows:
+        bus_text, interface, media, drive_text, flag = row.split("|")
+        parsed = parse_volume_json(
+            json.dumps(
+                {
+                    "device_id": "E:",
+                    "mount_point": "E:\\",
+                    "filesystem": "NTFS",
+                    "size_bytes": 8,
+                    "drive_type": int(drive_text),
+                    "interface_type": interface.strip(),
+                    "bus_type": int(bus_text) if bus_text else None,
+                    "media_type": media.strip(),
+                    "is_system": False,
+                    "is_boot": False,
+                }
+            )
+        )
+        assert not isinstance(parsed, Failure)
+        assert parsed[0].removable is (flag == "1")
+    system = parse_volume_json(
+        '{"device_id":"C:","mount_point":"C:\\\\","filesystem":"NTFS",'
+        '"size_bytes":8,"drive_type":3,"interface_type":"SCSI","bus_type":7,'
+        '"media_type":"External hard disk media","is_system":true,"is_boot":true}'
+    )
+    assert not isinstance(system, Failure)
+    assert system[0].removable is True
+    assert isinstance(guard_volume(system[0], HostSystem.WINDOWS, busy=False), Failure)
+    legacy = parse_volume_json(
+        '{"device_id":"E:","mount_point":"E:\\\\","label":"STICK",'
+        '"filesystem":"NTFS","size_bytes":8,"removable":false,'
+        '"is_system":false,"is_boot":false}'
+    )
+    assert not isinstance(legacy, Failure)
+    assert legacy[0].removable is False
+    command = windows_probe_command()[-1]
+    assert "MSFT_Disk" in command
+    assert "MediaType" in command
 
 
 def test_probe_and_cli(tmp_path: Path, monkeypatch: object, capsys: object) -> None:

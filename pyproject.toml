@@ -4,7 +4,7 @@ requires = [ "uv-build>=0.13.1,<0.14" ]
 
 [project]
 name = "cursor-portable"
-version = "1.0.5"
+version = "1.0.6"
 description = "Download Cursor and install a portable copy on a removable drive."
 readme = "README.md"
 keywords = [ "cursor", "portable" ]

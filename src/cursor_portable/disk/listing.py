@@ -19,13 +19,27 @@ from cursor_portable.models import HostSystem
 LOGGER = logging.getLogger(__name__)
 
 _WINDOWS = (
-    "$usb = New-Object System.Collections.Generic.List[string]; "
-    "Get-CimInstance Win32_DiskDrive | Where-Object { $_.InterfaceType -eq 'USB' } | "
-    "ForEach-Object { "
+    "$busByNumber = @{}; "
+    "try { "
+    "Get-CimInstance -Namespace root\\Microsoft\\Windows\\Storage "
+    "-ClassName MSFT_Disk -ErrorAction Stop | ForEach-Object { "
+    "$busByNumber[[string]$_.Number] = [int]$_.BusType } "
+    "} catch { "
+    "[Console]::Error.WriteLine('Bus type probe skipped: ' + $_.Exception.Message) "
+    "}; "
+    "$facts = @{}; "
+    "Get-CimInstance Win32_DiskDrive | ForEach-Object { "
+    "$number = [string]$_.Index; "
+    "$bus = $null; "
+    "if ($busByNumber.ContainsKey($number)) { $bus = $busByNumber[$number] }; "
+    "$interface = [string]$_.InterfaceType; "
+    "$media = [string]$_.MediaType; "
     "Get-CimAssociatedInstance -InputObject $_ -ResultClassName Win32_DiskPartition | "
     "ForEach-Object { "
     "Get-CimAssociatedInstance -InputObject $_ -ResultClassName Win32_LogicalDisk | "
-    "ForEach-Object { [void]$usb.Add($_.DeviceID) } } }; "
+    "ForEach-Object { "
+    "$facts[$_.DeviceID] = [PSCustomObject]@{ "
+    "interface = $interface; media = $media; bus = $bus } } } }; "
     "$access = @{}; "
     "Get-CimInstance Win32_Volume | ForEach-Object { "
     "$letter = [string]$_.DriveLetter; "
@@ -35,14 +49,22 @@ _WINDOWS = (
     "$system = $env:SystemDrive; "
     "$disks = @(Get-CimInstance Win32_LogicalDisk | ForEach-Object { "
     "$id = $_.DeviceID; "
-    "$removable = ($_.DriveType -eq 2) -or ($usb -contains $id); "
+    "$fact = $facts[$id]; "
+    "$interfaceType = ''; "
+    "$mediaType = ''; "
+    "$busType = $null; "
+    "if ($null -ne $fact) { "
+    "$interfaceType = [string]$fact.interface; "
+    "$mediaType = [string]$fact.media; "
+    "$busType = $fact.bus }; "
     "$rights = $access[$id]; "
     "$writable = ($null -eq $rights) -or ($rights -eq 0) -or ($rights -eq 2) "
     "-or ($rights -eq 3); "
     "[PSCustomObject]@{ device_id = $id; "
     "mount_point = ($id + '\\'); label = [string]$_.VolumeName; "
     "filesystem = [string]$_.FileSystem; size_bytes = [int64]$_.Size; "
-    "removable = $removable; writable = [bool]$writable; "
+    "drive_type = [int]$_.DriveType; interface_type = $interfaceType; "
+    "bus_type = $busType; media_type = $mediaType; writable = [bool]$writable; "
     "is_system = ($id -eq $system); "
     "is_boot = ($id -eq $system) } }); "
     "$disks | ConvertTo-Json -Compress"
@@ -245,6 +267,9 @@ def load_probed_volumes(system: HostSystem) -> tuple[Volume, ...] | Failure:
     if completed.returncode != 0:
         detail = completed.stderr.strip() or "Volume probe failed."
         return Failure("volumes", detail)
+    note = completed.stderr.strip()
+    if note:
+        LOGGER.info("Volume probe note: %s", note)
     if system is HostSystem.LINUX:
         probed = volumes_from_lsblk(completed.stdout)
         if isinstance(probed, Failure):

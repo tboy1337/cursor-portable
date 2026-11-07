@@ -23,7 +23,7 @@ Uninstall removes the cache, the PATH entry, and the shortcuts this tool created
 Use the Uninstall button in the setup window. After `uv sync`, run `uv run python -m cursor_portable uninstall`. After `python -m pip install .`, run `python -m cursor_portable uninstall`.
 
 ## **Safety bits**
-• The drive picker refuses the system disk, non-removable disks and read-only mounts
+• The drive picker refuses the system disk, internal disks, and read-only mounts. A USB dock counts, including a fixed SCSI disk Windows calls external media
 • Formatting makes you type the drive's label first
 • `python -m cursor_portable uninstall` removes the host cache, PATH entry and shortcuts and leaves the drive alone
 
