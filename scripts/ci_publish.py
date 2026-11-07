@@ -19,7 +19,8 @@ def release_notes(version: str) -> str:
     """Return the release note body."""
     return (
         f"cursor-portable {version}.\n\n"
-        "Clone the repository and install it with `uv sync`. "
+        "`pip install cursor-portable` installs this version from PyPI. "
+        "Clone the repository and install it with `uv sync` to work from source. "
         "This release does not include a setup program.\n"
     )
 

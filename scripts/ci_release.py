@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Decide whether a push to main should publish a GitHub release.
+"""Decide whether a push to main should publish.
 
 A release is published when ``[project].version`` in ``pyproject.toml``
 changes, and when that version still has no GitHub release. That file is
-the only version to edit.
+the only version to edit. The same decision uploads the wheel to PyPI.
 """
 
 from __future__ import annotations

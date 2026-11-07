@@ -40,6 +40,7 @@ from scripts.ci_release import (
     missing_pyproject,
     show_pyproject,
 )
+from scripts.ci_wheel import find_wheel, main as wheel_main
 
 _COMMIT = "a" * 40
 
@@ -63,6 +64,7 @@ def test_publish_creates_a_source_release(
     assert code == 0
     text = notes.read_text(encoding="utf-8")
     assert "cursor-portable 1.2.3." in text
+    assert "pip install cursor-portable" in text
     assert "Clone the repository" in text
     command = seen["command"]
     assert command[:4] == ["gh", "release", "create", "1.2.3"]
@@ -70,6 +72,53 @@ def test_publish_creates_a_source_release(
     assert _COMMIT in command
     assert str(notes) in command
     assert not any(part.endswith((".exe", ".7z", ".sha256")) for part in command)
+
+
+def _wheel(dist: Path, name: str, payload: bytes = b"wheel") -> None:
+    dist.mkdir(parents=True, exist_ok=True)
+    (dist / name).write_bytes(payload)
+
+
+def test_wheel_check_accepts_the_release_wheel(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    _wheel(dist, "cursor_portable-1.2.3-py3-none-any.whl")
+    _wheel(dist, "cursor_portable-1.2.30-py3-none-any.whl", b"other")
+    (dist / "cursor_portable-1.2.3.tar.gz").write_bytes(b"sdist")
+    assert wheel_main(["--version", "1.2.3", "--dist", str(dist)]) == 0
+    found = find_wheel(dist, "1.2.3")
+    assert isinstance(found, Path)
+    assert found.name == "cursor_portable-1.2.3-py3-none-any.whl"
+
+
+def test_wheel_check_refuses_a_bad_dist(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    assert wheel_main(["--version", "1.2", "--dist", str(dist)]) == 1
+    assert wheel_main(["--version", "1.2.3", "--dist", str(dist)]) == 1
+    _wheel(dist, "cursor_portable-1.2.3-py3-none-any.whl", b"")
+    assert isinstance(find_wheel(dist, "1.2.3"), Failure)
+    _wheel(dist, "cursor_portable-1.2.3-py3-none-any.whl")
+    _wheel(dist, "cursor_portable-1.2.3-py311-none-any.whl")
+    assert wheel_main(["--version", "1.2.3", "--dist", str(dist)]) == 1
+    assert isinstance(
+        find_wheel(dist / "cursor_portable-1.2.3-py3-none-any.whl", "1.2.3"),
+        Failure,
+    )
+
+
+def test_wheel_check_reports_an_unreadable_wheel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dist = tmp_path / "dist"
+    _wheel(dist, "cursor_portable-1.2.3-py3-none-any.whl")
+
+    def explode(_path: Path) -> int:
+        raise OSError("denied")
+
+    monkeypatch.setattr("scripts.ci_wheel._size", explode)
+    refused = find_wheel(dist, "1.2.3")
+    assert isinstance(refused, Failure)
+    assert refused.code == "wheel"
+    assert "denied" in refused.message
 
 
 def test_publish_refuses_a_bad_version(tmp_path: Path) -> None:

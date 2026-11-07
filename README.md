@@ -6,6 +6,15 @@ This repository does not contain Cursor. The wizard downloads a relocatable CPyt
 
 The drive uses NTFS on Windows, APFS on macOS, and ext4 on Linux. It keeps that system's Cursor build, the relocatable CPython, and one launcher.
 
+## From PyPI
+
+The package needs Python 3.11 through 3.15.
+
+```bash
+python -m pip install cursor-portable
+python -m cursor_portable
+```
+
 ## From this repository
 
 The package needs Python 3.11 through 3.15. `uv sync` or `python -m pip install .` installs it. The wizard uses tkinter from that Python.
