@@ -188,6 +188,25 @@ def test_path_block_shell_prepends_the_directory(tmp_path: Path) -> None:
     assert completed.stdout.splitlines()[0].startswith(f"{segment}:")
 
 
+def test_path_block_shell_keeps_the_first_directory_first(tmp_path: Path) -> None:
+    bash = _bash_executable()
+    first = "/opt/py/bin"
+    second = "/opt/git/bin"
+    script = tmp_path / "prepend.sh"
+    script.write_bytes(
+        f"PATH=/usr/bin\n{path_block((first, second))}printf '%s\\n' \"$PATH\"\n".encode()
+    )
+    completed = subprocess.run(
+        [bash, str(script)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.splitlines()[0] == f"{first}:{second}:/usr/bin"
+
+
 def test_session_stub_waits_until_stop_exists(tmp_path: Path) -> None:
     bash = _bash_executable()
     root = _posix_directory(bash, tmp_path)

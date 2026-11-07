@@ -72,10 +72,14 @@ def _shell_assignment(name: str, segment: str) -> str:
 
 
 def path_block(segment: str | tuple[str, ...]) -> str:
-    """Return a shell block that prepends one or more directories."""
+    """Return a shell block that prepends directories, first segment first.
+
+    Each assignment prepends itself, so the last assignment ends up at the
+    front of PATH. The assignments are written from last to first.
+    """
     segments = (segment,) if isinstance(segment, str) else segment
     body: list[str] = []
-    for index, item in enumerate(segments):
+    for index, item in reversed(list(enumerate(segments))):
         name = "cursor_portable_bin"
         if len(segments) != 1:
             name = f"cursor_portable_bin_{index}"

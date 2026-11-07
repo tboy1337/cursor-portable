@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Build and run the Linux session container.
 
-The container downloads portable CPython and edits shell startup files
-inside the container. The Windows py launcher and the host uv environment
-stay on the host. This command stays out of scripts/verify.py and CI.
+The container downloads portable CPython and Git and edits shell startup
+files inside the container. The Windows py launcher and the host uv
+environment stay on the host. This command stays out of scripts/verify.py
+and CI.
 """
 
 from __future__ import annotations

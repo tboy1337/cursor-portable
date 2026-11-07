@@ -21,6 +21,7 @@ class StickLayout:
     argv: Path
     temp: Path
     python: Path
+    git: Path
     cli: Path
     tool: Path
     meta: Path
@@ -42,6 +43,7 @@ class StickLayout:
             argv=data / "argv.json",
             temp=data / "tmp",
             python=root / "python",
+            git=root / "git",
             cli=root / "cli",
             tool=root / "tool",
             meta=root / "meta",

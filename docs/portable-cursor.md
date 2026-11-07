@@ -1,6 +1,6 @@
 # Portable layout
 
-The wizard downloads the official Cursor build and a relocatable Python on the computer where it runs, then copies that build onto the stick. The stick is for the person who created it.
+The wizard downloads the official Cursor build, a relocatable Python, and a relocatable Git on the computer where it runs, then copies that build onto the stick. The stick is for the person who created it.
 
 
 
@@ -11,6 +11,7 @@ CursorPortable/
   data/extensions/      extensions
   data/dot-cursor/      skills, rules, MCP config, and agents
   python/               relocatable CPython 3.14 with pip
+  git/                  relocatable Git
   tool/                 this package, imported by the launchers
   cli/                  Cursor CLI, when selected
   CursorPortable.cmd    Windows launcher, only on a Windows stick
@@ -30,7 +31,15 @@ While Cursor is open, the stick interpreter is prepended on PATH when that exact
 
 When Cursor exits, the directories added for that session are removed. A directory that was already on PATH stays where it was. Uninstall removes the host cache, that PATH entry, and the shortcuts this tool created. The stick is left as it is.
 
-An opt-in Linux container checks this PATH behavior. See [docker-session.md](docker-session.md).
+## Git
+
+The stick's `git/` directory is a relocatable Git. Windows uses MinGit from Git for Windows. macOS and Linux use the relocatable Git builds published by GitHub Desktop as dugite-native, because Git does not publish a relocatable archive for those systems. The Windows PATH entry is `git/cmd`. The macOS and Linux PATH entry is `git/bin`. That directory is prepended after the portable Python directories, so `python` and `pip` stay ahead of `git`, and `git` stays ahead of a Git that was already installed.
+
+Cursor's `git.path` setting points at `git/cmd/git.exe` or `git/bin/git` when that file is on the stick. A settings file that is not plain JSON is left unchanged. A stick created before Git was added does not get `git.path`, so Cursor can still use Git already installed on the computer.
+
+A tree that already contains the Git executable is kept when the wizard runs again. A `git/` directory without that file is replaced.
+
+An opt-in Linux container checks this PATH behavior for Python and Git. See [docker-session.md](docker-session.md).
 
 ## Settings copy
 

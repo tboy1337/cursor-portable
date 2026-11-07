@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import importlib.metadata
 from io import BytesIO
+import json
 from pathlib import Path
+import stat
 import subprocess
 import tarfile
+import zipfile
 
 import pytest
 
@@ -18,7 +21,14 @@ from cursor_portable._version import (
     resolve_version,
     write_version_stamp,
 )
+from cursor_portable.download.http_client import HttpResponse
 from cursor_portable.failure import Failure
+from cursor_portable.git_runtime.extract import extract_git_archive
+from cursor_portable.git_runtime.pin import (
+    git_executable,
+    parse_sha256_text,
+    select_git_asset,
+)
 import cursor_portable.install.acquire as acquire
 from cursor_portable.install.acquire import copy_tool_package
 from cursor_portable.install.apply import install_tree
@@ -543,3 +553,350 @@ def test_install_replaces_python_from_another_minor(tmp_path: Path) -> None:
     assert (layout.python / "python314.dll").read_bytes() == b"dll"
     assert not (layout.python / "python313.dll").exists()
     assert not (layout.python / "stale.txt").exists()
+
+
+def test_select_git_asset_skips_busybox_and_hash_files() -> None:
+    names = (
+        "MinGit-2.9.0-64-bit.zip",
+        "MinGit-2.10.0-64-bit.zip",
+        "MinGit-2.10.0-busybox-64-bit.zip",
+        "MinGit-2.10.0-32-bit.zip",
+        "MinGit-2.10.0-arm64.zip",
+        "dugite-native-v2.55.0-aaaa-macOS-x64.tar.gz",
+        "dugite-native-v2.56.0-bbbb-macOS-x64.tar.gz",
+        "dugite-native-v2.56.0-bbbb-macOS-x64.tar.gz.sha256",
+        "dugite-native-v2.56.0-bbbb-ubuntu-arm.tar.gz",
+        "dugite-native-v2.56.0-bbbb-ubuntu-arm64.tar.gz",
+        "dugite-native-v2.56.0-bbbb-ubuntu-x64.lzma",
+    )
+    assert (
+        select_git_asset(names, HostSystem.WINDOWS, "x64") == "MinGit-2.10.0-64-bit.zip"
+    )
+    assert select_git_asset(names, HostSystem.WINDOWS, "arm64") == (
+        "MinGit-2.10.0-arm64.zip"
+    )
+    assert select_git_asset(names, HostSystem.MACOS, "x64") == (
+        "dugite-native-v2.56.0-bbbb-macOS-x64.tar.gz"
+    )
+    assert select_git_asset(names, HostSystem.LINUX, "arm64") == (
+        "dugite-native-v2.56.0-bbbb-ubuntu-arm64.tar.gz"
+    )
+    assert select_git_asset(names, HostSystem.LINUX, "x64") is None
+    assert select_git_asset(names, HostSystem.WINDOWS, "sparc") is None
+    assert select_git_asset(
+        ("MinGit-2.beta-64-bit.zip", "MinGit-2.10.0-64-bit.zip"),
+        HostSystem.WINDOWS,
+        "x64",
+    ) == ("MinGit-2.10.0-64-bit.zip")
+    assert git_executable(Path("git"), HostSystem.WINDOWS).name == "git.exe"
+    assert git_executable(Path("git"), HostSystem.LINUX).name == "git"
+    assert parse_sha256_text("") is None
+    assert parse_sha256_text("not-a-hash") is None
+    assert parse_sha256_text(f"{'ab' * 32}  git.tar.gz") == "ab" * 32
+
+
+def test_git_sha256_uses_digest_then_sibling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    name = "dugite-native-v2.56.0-bbbb-ubuntu-x64.tar.gz"
+    digest = "cd" * 32
+    calls: list[str] = []
+
+    def refuse(*_args: object, **_kwargs: object) -> Failure:
+        calls.append("download")
+        return Failure("http", "no")
+
+    monkeypatch.setattr(acquire, "download_https", refuse)
+    published = {
+        "assets": [
+            {
+                "name": name,
+                "browser_download_url": "https://example.invalid/git.tar.gz",
+                "digest": f"sha256:{digest}",
+            }
+        ]
+    }
+    assert acquire._git_sha256(published, name, tmp_path) == digest
+    assert not calls
+
+    def write_hash(_url: str, destination: Path, **_kwargs: object) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(f"{'ab' * 32}\n", encoding="utf-8")
+
+    monkeypatch.setattr(acquire, "download_https", write_hash)
+    sibling = {
+        "assets": [
+            {
+                "name": name,
+                "browser_download_url": "https://example.invalid/git.tar.gz",
+            },
+            {
+                "name": f"{name}.sha256",
+                "browser_download_url": "https://example.invalid/git.tar.gz.sha256",
+            },
+        ]
+    }
+    assert acquire._git_sha256(sibling, name, tmp_path / "sibling") == "ab" * 32
+    assert isinstance(acquire._git_sha256({"assets": []}, name, tmp_path), Failure)
+
+
+def test_git_archive_selects_the_asset_for_the_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    windows = "MinGit-2.56.0.4-64-bit.zip"
+    linux = "dugite-native-v2.56.0-bbbb-ubuntu-x64.tar.gz"
+    digest = "ab" * 32
+    assets = [
+        {
+            "name": asset_name,
+            "browser_download_url": f"https://example.invalid/{asset_name}",
+            "digest": f"sha256:{digest}",
+        }
+        for asset_name in (windows, "MinGit-2.56.0.4-busybox-64-bit.zip", linux)
+    ]
+    body = json.dumps({"assets": assets}).encode("utf-8")
+
+    def fake_get(_self: object, url: str, *, timeout: float) -> HttpResponse:
+        del timeout
+        return HttpResponse(status=200, url=url, body=body, headers={})
+
+    seen: list[str] = []
+
+    def fake_download(url: str, destination: Path, **_kwargs: object) -> None:
+        seen.append(url)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"archive")
+
+    monkeypatch.setattr(acquire.UrllibClient, "get", fake_get)
+    monkeypatch.setattr(acquire, "download_https", fake_download)
+    monkeypatch.setattr(acquire, "check_download", lambda *_args, **_kwargs: None)
+    saved = acquire._git_archive(HostSystem.WINDOWS, "x64", tmp_path / "win")
+    assert isinstance(saved, Path)
+    assert saved.name == windows
+    assert "busybox" not in seen[-1]
+    posix = acquire._git_archive(HostSystem.LINUX, "x64", tmp_path / "linux")
+    assert isinstance(posix, Path)
+    assert posix.name == linux
+    assert isinstance(
+        acquire._git_archive(HostSystem.WINDOWS, "sparc", tmp_path / "bad"),
+        Failure,
+    )
+
+
+def test_ensure_git_keeps_a_tree_and_replaces_a_broken_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def archive(*_args: object, **_kwargs: object) -> Path:
+        calls.append("download")
+        path = tmp_path / "MinGit-2.56.0.4-64-bit.zip"
+        with zipfile.ZipFile(path, "w") as handle:
+            handle.writestr("cmd/git.exe", b"git")
+        return path
+
+    monkeypatch.setattr(acquire, "_git_archive", archive)
+    broken = tmp_path / "cached" / "git"
+    broken.mkdir(parents=True)
+    (broken / "stale.txt").write_text("stale", encoding="utf-8")
+    assert (
+        acquire.ensure_git(HostSystem.WINDOWS, tmp_path / "cached", arch="x64") is None
+    )
+    assert (broken / "cmd" / "git.exe").read_bytes() == b"git"
+    assert not (broken / "stale.txt").exists()
+    assert calls == ["download"]
+    assert (
+        acquire.ensure_git(HostSystem.WINDOWS, tmp_path / "cached", arch="x64") is None
+    )
+    assert calls == ["download"]
+    kept = tmp_path / "kept" / "git" / "bin"
+    kept.mkdir(parents=True)
+    (kept / "git").write_bytes(b"keep")
+    assert acquire.ensure_git(HostSystem.LINUX, tmp_path / "kept", arch="x64") is None
+    assert calls == ["download"]
+    assert (kept / "git").read_bytes() == b"keep"
+
+
+def test_extract_git_archive_materializes_links(tmp_path: Path) -> None:
+    archive = tmp_path / "git.tar"
+    payload = b"git-bytes"
+    with tarfile.open(archive, "w") as handle:
+        info = tarfile.TarInfo("libexec/git-core/git")
+        info.size = len(payload)
+        info.mode = 0o755
+        handle.addfile(info, BytesIO(payload))
+        link = tarfile.TarInfo("bin/git")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "../libexec/git-core/git"
+        handle.addfile(link)
+        hard = tarfile.TarInfo("bin/git-receive-pack")
+        hard.type = tarfile.LNKTYPE
+        hard.linkname = "libexec/git-core/git"
+        handle.addfile(hard)
+    destination = tmp_path / "out"
+    assert extract_git_archive(archive, destination) is None
+    copied = destination / "bin" / "git"
+    assert copied.read_bytes() == payload
+    assert not copied.is_symlink()
+    assert (destination / "bin" / "git-receive-pack").read_bytes() == payload
+
+
+def test_extract_git_archive_refuses_escape(tmp_path: Path) -> None:
+    archive = tmp_path / "bad.tar"
+    with tarfile.open(archive, "w") as handle:
+        info = tarfile.TarInfo("../evil.txt")
+        info.size = 2
+        handle.addfile(info, BytesIO(b"no"))
+    assert isinstance(extract_git_archive(archive, tmp_path / "out"), Failure)
+    assert not (tmp_path / "evil.txt").exists()
+    zipped = tmp_path / "bad.zip"
+    with zipfile.ZipFile(zipped, "w") as handle:
+        handle.writestr("../nope.txt", b"x")
+    assert isinstance(extract_git_archive(zipped, tmp_path / "zip-out"), Failure)
+    assert not (tmp_path / "nope.txt").exists()
+
+
+def _tar_file(name: str, payload: bytes = b"git") -> tarfile.TarInfo:
+    info = tarfile.TarInfo(name)
+    info.size = len(payload)
+    info.mode = 0o755
+    return info
+
+
+def _add_bytes(handle: tarfile.TarFile, name: str, payload: bytes = b"git") -> None:
+    handle.addfile(_tar_file(name, payload), BytesIO(payload))
+
+
+def test_extract_git_archive_covers_links_and_refusals(tmp_path: Path) -> None:
+    archive = tmp_path / "links.tar"
+    with tarfile.open(archive, "w") as handle:
+        handle.addfile(tarfile.TarInfo("./"))
+        directory = tarfile.TarInfo("real")
+        directory.type = tarfile.DIRTYPE
+        handle.addfile(directory)
+        _add_bytes(handle, "libexec/git-core/git")
+        directory_link = tarfile.TarInfo("alias")
+        directory_link.type = tarfile.SYMTYPE
+        directory_link.linkname = "real"
+        handle.addfile(directory_link)
+    destination = tmp_path / "links"
+    assert extract_git_archive(archive, destination) is None
+    assert (destination / "alias").is_dir()
+    assert (destination / "libexec" / "git-core" / "git").read_bytes() == b"git"
+
+    absolute = tmp_path / "absolute.tar"
+    with tarfile.open(absolute, "w") as handle:
+        _add_bytes(handle, "/etc/passwd")
+    assert isinstance(extract_git_archive(absolute, tmp_path / "absolute"), Failure)
+
+    drive = tmp_path / "drive.tar"
+    with tarfile.open(drive, "w") as handle:
+        _add_bytes(handle, "C:/Windows/git.exe")
+    assert isinstance(extract_git_archive(drive, tmp_path / "drive"), Failure)
+
+    escaped = tmp_path / "escape-link.tar"
+    with tarfile.open(escaped, "w") as handle:
+        link = tarfile.TarInfo("bin/git")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "../../outside"
+        handle.addfile(link)
+    assert isinstance(extract_git_archive(escaped, tmp_path / "escape-link"), Failure)
+
+    missing = tmp_path / "missing.tar"
+    with tarfile.open(missing, "w") as handle:
+        link = tarfile.TarInfo("bin/git")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "missing-target"
+        handle.addfile(link)
+    assert isinstance(extract_git_archive(missing, tmp_path / "missing"), Failure)
+
+    cyclic = tmp_path / "cycle.tar"
+    with tarfile.open(cyclic, "w") as handle:
+        first = tarfile.TarInfo("a")
+        first.type = tarfile.SYMTYPE
+        first.linkname = "b"
+        second = tarfile.TarInfo("b")
+        second.type = tarfile.SYMTYPE
+        second.linkname = "a"
+        handle.addfile(first)
+        handle.addfile(second)
+    assert isinstance(extract_git_archive(cyclic, tmp_path / "cycle"), Failure)
+
+    other = tmp_path / "fifo.tar"
+    with tarfile.open(other, "w") as handle:
+        fifo = tarfile.TarInfo("bin/git")
+        fifo.type = tarfile.FIFOTYPE
+        handle.addfile(fifo)
+    assert isinstance(extract_git_archive(other, tmp_path / "fifo"), Failure)
+
+    long = tmp_path / "long.tar"
+    with tarfile.open(long, "w") as handle:
+        for index in range(33):
+            link = tarfile.TarInfo(f"link-{index}")
+            link.type = tarfile.SYMTYPE
+            link.linkname = f"link-{index + 1}"
+            handle.addfile(link)
+    assert isinstance(extract_git_archive(long, tmp_path / "long"), Failure)
+
+    broken = tmp_path / "broken.tar"
+    broken.write_bytes(b"not-a-tar")
+    assert isinstance(extract_git_archive(broken, tmp_path / "broken"), Failure)
+
+    linked = tmp_path / "zip-link.zip"
+    with zipfile.ZipFile(linked, "w") as handle:
+        handle.writestr("libexec/git-core/git", b"zip-git")
+        info = zipfile.ZipInfo("bin/git")
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        handle.writestr(info, b"../libexec/git-core/git")
+        empty = zipfile.ZipInfo("bin/empty")
+        empty.external_attr = stat.S_IFLNK << 16
+        handle.writestr(empty, b"")
+    assert isinstance(extract_git_archive(linked, tmp_path / "zip-link"), Failure)
+    copied = tmp_path / "zip-link-ok.zip"
+    with zipfile.ZipFile(copied, "w") as handle:
+        handle.mkdir("cmd")
+        info = zipfile.ZipInfo("cmd/git.exe")
+        info.external_attr = 0o755 << 16
+        handle.writestr(info, b"git")
+        zip_link = zipfile.ZipInfo("git.exe")
+        zip_link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        handle.writestr(zip_link, b"cmd/git.exe")
+    assert extract_git_archive(copied, tmp_path / "zip-ok") is None
+    assert (tmp_path / "zip-ok" / "git.exe").read_bytes() == b"git"
+    assert (tmp_path / "zip-ok" / "cmd").is_dir()
+
+
+def test_install_replaces_git_without_an_executable(tmp_path: Path) -> None:
+    app = tmp_path / "app" / "resources" / "app"
+    app.mkdir(parents=True)
+    (app / "product.json").write_text('{"version": "9"}', encoding="utf-8")
+    source = tmp_path / "git-src"
+    (source / "cmd").mkdir(parents=True)
+    (source / "cmd" / "git.exe").write_bytes(b"git")
+    layout = StickLayout.from_mount(tmp_path / "mount")
+    layout.git.mkdir(parents=True)
+    (layout.git / "stale.txt").write_text("stale", encoding="utf-8")
+    choices = InstallChoices(
+        product=ProductKind.IDE,
+        scope=InstallScope.USER,
+        profile=ProfileMode.FRESH,
+        volume_device="E:",
+        typed_label="STICK",
+    )
+    assert (
+        install_tree(
+            tmp_path / "app",
+            layout,
+            choices,
+            HostSystem.WINDOWS,
+            sources=None,
+            cursor_running=False,
+            git_source=source,
+        )
+        is None
+    )
+    assert (layout.git / "cmd" / "git.exe").read_bytes() == b"git"
+    assert not (layout.git / "stale.txt").exists()

@@ -71,7 +71,11 @@ from cursor_portable.launcher.home_link import (
     plan_home_link,
 )
 from cursor_portable.launcher.host_watch import write_managed_shortcut
-from cursor_portable.launcher.launch_plan import build_launch, python_segments
+from cursor_portable.launcher.launch_plan import (
+    build_launch,
+    python_segments,
+    session_segments,
+)
 from cursor_portable.launcher.links import DirectoryLinker, link_target
 from cursor_portable.launcher.path_edit import (
     insert_path_block,
@@ -122,7 +126,7 @@ from cursor_portable.models import (
     host_system_name,
 )
 from cursor_portable.profile.copy_profile import copy_profile
-from cursor_portable.profile.settings import set_interpreter
+from cursor_portable.profile.settings import set_git_path, set_interpreter
 from cursor_portable.profile.sources import profile_sources
 from cursor_portable.python_runtime.pin import select_python_asset
 from cursor_portable.repack.commands import extract_command
@@ -608,8 +612,14 @@ def test_profile_copy_and_settings(tmp_path: Path) -> None:
     assert not isinstance(linux, Failure)
     settings = layout.user_data / "User" / "settings.json"
     assert set_interpreter(settings, Path("python")) is True
+    assert set_git_path(settings, Path("git")) is True
+    written = settings.read_text(encoding="utf-8")
+    assert "python.defaultInterpreterPath" in written
+    assert "git.path" in written
     settings.write_text("{ /* comment */ }", encoding="utf-8")
     assert set_interpreter(settings, Path("python")) is False
+    assert set_git_path(settings, Path("git")) is False
+    assert settings.read_text(encoding="utf-8") == "{ /* comment */ }"
 
 
 def test_path_home_shortcuts_and_cache(tmp_path: Path) -> None:
@@ -917,6 +927,13 @@ def test_install_sfx_and_launch(tmp_path: Path) -> None:
     assert stopped == [9, 9]
     assert store.value == "C:\\Windows"
     assert python_segments(layout, HostSystem.LINUX)[0].endswith("bin")
+    windows = session_segments(layout, HostSystem.WINDOWS)
+    assert windows[0] == str(layout.python)
+    assert windows[-1] == str(layout.git / "cmd")
+    assert session_segments(layout, HostSystem.LINUX) == (
+        str(layout.python / "bin"),
+        str(layout.git / "bin"),
+    )
     command = build_launch(layout, cache, tmp_path / "scratch", HostSystem.WINDOWS)
     assert "data" in command.argv[1].replace("\\", "/")
     assert command.argv[1].replace("\\", "/").endswith("data/user-data")

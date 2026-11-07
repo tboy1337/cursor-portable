@@ -24,6 +24,18 @@ def python_segments(layout: StickLayout, system: HostSystem) -> tuple[str, ...]:
     return (str(layout.python / "bin"),)
 
 
+def git_segments(layout: StickLayout, system: HostSystem) -> tuple[str, ...]:
+    """Directory prepended to PATH so the portable Git is ahead of the host."""
+    if system is HostSystem.WINDOWS:
+        return (str(layout.git / "cmd"),)
+    return (str(layout.git / "bin"),)
+
+
+def session_segments(layout: StickLayout, system: HostSystem) -> tuple[str, ...]:
+    """Python directories, then Git. Python stays ahead of Git."""
+    return python_segments(layout, system) + git_segments(layout, system)
+
+
 def interpreter_path(layout: StickLayout, system: HostSystem) -> Path:
     """Path of the portable interpreter on this operating system."""
     if system is HostSystem.WINDOWS:

@@ -24,6 +24,13 @@ from cursor_portable.download.resolve import resolve_ide
 from cursor_portable.download.sum_file import expected_sha256
 from cursor_portable.download.verify_file import check_download
 from cursor_portable.failure import Failure
+from cursor_portable.git_runtime.extract import extract_git_archive
+from cursor_portable.git_runtime.pin import (
+    git_release_url,
+    git_tree_matches,
+    parse_sha256_text,
+    select_git_asset,
+)
 from cursor_portable.models import (
     HostSystem,
     InstallChoices,
@@ -104,7 +111,7 @@ def acquire_payload(
     *,
     progress: Progress | None = None,
 ) -> Failure | None:
-    """Fill ``destination`` with the IDE, CLI, Python, and this package."""
+    """Fill ``destination`` with the IDE, CLI, Python, Git, and this package."""
     destination.mkdir(parents=True, exist_ok=True)
     LOGGER.info(
         "Acquiring %s %s on %s",
@@ -124,6 +131,14 @@ def acquire_payload(
     )
     if python_ready is not None:
         return python_ready
+    git_ready = ensure_git(
+        choices.target_os,
+        destination,
+        arch=choices.target_arch,
+        progress=progress,
+    )
+    if git_ready is not None:
+        return git_ready
     if choices.product in {ProductKind.IDE, ProductKind.BOTH}:
         ide_ready = ensure_ide(choices, system, destination, progress=progress)
         if ide_ready is not None:
@@ -210,6 +225,54 @@ def ensure_python(
         shutil.rmtree(folder)
     shutil.copytree(root, folder)
     LOGGER.info("Installed portable Python in %s", folder)
+    return None
+
+
+def ensure_git(
+    system: HostSystem,
+    destination: Path,
+    *,
+    arch: str | None = None,
+    progress: Progress | None = None,
+) -> Failure | None:
+    """Download a relocatable Git into ``destination/git``."""
+    folder = destination / "git"
+    if git_tree_matches(folder):
+        LOGGER.info("Using the Git already in %s", folder)
+        _report(progress, "Using the portable Git already downloaded")
+        return None
+    if folder.exists():
+        LOGGER.info("Replacing Git in %s because it has no git executable", folder)
+        _report(progress, "Replacing portable Git")
+    chosen = arch
+    if not chosen:
+        detected = host_arch()
+        if isinstance(detected, Failure):
+            return detected
+        chosen = detected
+    _report(progress, "Downloading portable Git")
+    archive = _git_archive(
+        system,
+        chosen,
+        destination / "downloads",
+        progress=progress,
+    )
+    if isinstance(archive, Failure):
+        return archive
+    extracted = destination / "downloads" / "git-src"
+    if extracted.exists():
+        shutil.rmtree(extracted)
+    _report(progress, "Extracting portable Git")
+    extracted_ok = extract_git_archive(archive, extracted)
+    if extracted_ok is not None:
+        return extracted_ok
+    root = _git_root(extracted)
+    if isinstance(root, Failure):
+        return root
+    if folder.exists():
+        shutil.rmtree(folder)
+    shutil.copytree(root, folder)
+    LOGGER.info("Installed portable Git in %s", folder)
     return None
 
 
@@ -540,16 +603,111 @@ def _python_archive(
 
 
 def _python_release(client: UrllibClient) -> dict[str, object] | Failure:
-    response = client.get(_PYTHON_RELEASE, timeout=60)
+    return _release_document(client, _PYTHON_RELEASE, "python")
+
+
+def _git_archive(
+    system: HostSystem,
+    arch: str,
+    downloads: Path,
+    *,
+    progress: Progress | None = None,
+) -> Path | Failure:
+    client = UrllibClient()
+    parsed = _release_document(client, git_release_url(system), "git")
+    if isinstance(parsed, Failure):
+        return parsed
+    selected = _git_choice(parsed, system, arch)
+    if isinstance(selected, Failure):
+        return selected
+    name, url = selected
+    expected = _git_sha256(parsed, name, downloads)
+    if isinstance(expected, Failure):
+        return expected
+    archive = downloads / name
+    failure = download_https(
+        url,
+        archive,
+        minimum_bytes=5_000_000,
+        expected_sha256=expected,
+        progress=progress,
+        progress_label="portable Git",
+    )
+    if failure is not None:
+        return failure
+    confirmed = check_download(
+        archive, minimum_bytes=5_000_000, expected_sha256=expected
+    )
+    if confirmed is not None:
+        return confirmed
+    return archive
+
+
+def _git_choice(
+    document: dict[str, object],
+    system: HostSystem,
+    arch: str,
+) -> tuple[str, str] | Failure:
+    name = select_git_asset(_asset_names(document), system, arch)
+    if name is None:
+        return Failure("git", f"No portable Git build for {system.value} {arch}.")
+    LOGGER.info("Selected portable Git asset %s", name)
+    url = _asset_url(document, name)
+    if url is None:
+        return Failure("git", f"Release JSON has no URL for {name}.")
+    return name, url
+
+
+def _git_sha256(
+    document: dict[str, object],
+    name: str,
+    downloads: Path,
+) -> str | Failure:
+    found = _asset_sha256(document, name)
+    if found is not None:
+        return found
+    sibling = f"{name}.sha256"
+    sums_url = _asset_url(document, sibling)
+    if sums_url is None:
+        return Failure("git", f"No SHA-256 published for {name}.")
+    sums_path = downloads / sibling
+    failure = download_https(sums_url, sums_path, minimum_bytes=64)
+    if failure is not None:
+        return failure
+    listed = parse_sha256_text(sums_path.read_text(encoding="utf-8"))
+    if listed is None:
+        return Failure("git", f"No SHA-256 published for {name}.")
+    return listed
+
+
+def _release_document(
+    client: UrllibClient,
+    url: str,
+    code: str,
+) -> dict[str, object] | Failure:
+    response = client.get(url, timeout=60)
     if isinstance(response, Failure):
         return response
     try:
         parsed: object = json.loads(response.body.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
-        return Failure("python", f"Python release JSON is invalid: {exc}")
+        return Failure(code, f"{code.title()} release JSON is invalid: {exc}")
     if not isinstance(parsed, dict):
-        return Failure("python", "Python release JSON is not an object.")
+        return Failure(code, f"{code.title()} release JSON is not an object.")
     return parsed
+
+
+def _git_root(extracted: Path) -> Path | Failure:
+    for name, parent in (("git.exe", "cmd"), ("git", "bin")):
+        matches = [
+            path
+            for path in extracted.rglob(name)
+            if path.is_file() and path.parent.name.casefold() == parent
+        ]
+        if matches:
+            matches.sort(key=lambda path: len(path.parts))
+            return matches[0].parents[1]
+    return Failure("git", "The Git archive has no git executable.")
 
 
 def _python_choice(

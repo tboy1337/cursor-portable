@@ -16,19 +16,34 @@ def set_interpreter(settings_path: Path, interpreter: Path) -> bool:
     Returns False when the file is JSONC or otherwise not plain JSON. The file
     is left unchanged in that case so comments are not discarded.
     """
+    return _set_json_setting(
+        settings_path,
+        "python.defaultInterpreterPath",
+        str(interpreter),
+        "interpreter",
+    )
+
+
+def set_git_path(settings_path: Path, executable: Path) -> bool:
+    """Point ``git.path`` at the portable Git executable.
+
+    Returns False when the file is JSONC or otherwise not plain JSON. The file
+    is left unchanged in that case so comments are not discarded.
+    """
+    return _set_json_setting(settings_path, "git.path", str(executable), "git path")
+
+
+def _set_json_setting(settings_path: Path, key: str, value: str, label: str) -> bool:
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     if not settings_path.exists():
-        document: dict[str, object] = {
-            "python.defaultInterpreterPath": str(interpreter)
-        }
-        settings_path.write_text(dump_object(document), encoding="utf-8")
-        LOGGER.info("Wrote interpreter setting to %s", settings_path)
+        settings_path.write_text(dump_object({key: value}), encoding="utf-8")
+        LOGGER.info("Wrote %s setting to %s", label, settings_path)
         return True
     loaded = load_object(settings_path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         LOGGER.warning("Left %s unchanged because it is not plain JSON.", settings_path)
         return False
-    loaded["python.defaultInterpreterPath"] = str(interpreter)
+    loaded[key] = value
     settings_path.write_text(dump_object(loaded), encoding="utf-8")
-    LOGGER.info("Updated interpreter setting in %s", settings_path)
+    LOGGER.info("Updated %s setting in %s", label, settings_path)
     return True

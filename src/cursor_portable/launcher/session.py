@@ -16,6 +16,7 @@ from cursor_portable.constants import (
     SESSION_FILE_NAME,
 )
 from cursor_portable.failure import Failure
+from cursor_portable.git_runtime.pin import git_executable
 from cursor_portable.host.cleanup import cleanup_session
 from cursor_portable.json_io import load_object
 from cursor_portable.launcher.cache_sync import (
@@ -29,7 +30,7 @@ from cursor_portable.launcher.launch_plan import (
     LaunchCommand,
     build_launch,
     interpreter_path,
-    python_segments,
+    session_segments,
 )
 from cursor_portable.launcher.links import DirectoryLinker, link_target
 from cursor_portable.launcher.path_edit import prepend_segments, separator_for
@@ -60,7 +61,7 @@ from cursor_portable.launcher.shortcuts import (
     with_snapshots,
 )
 from cursor_portable.models import HostSystem, InstallScope, ProductKind
-from cursor_portable.profile.settings import set_interpreter
+from cursor_portable.profile.settings import set_git_path, set_interpreter
 from cursor_portable.repack.copy_tree import copy_tree
 from cursor_portable.repack.layout import StickLayout, ensure_data_dirs
 from cursor_portable.repack.meta import (
@@ -301,7 +302,7 @@ def _launch_command(
     separator = separator_for(system)
     path_value = prepend_segments(
         os.environ.get("PATH", ""),
-        python_segments(layout, system),
+        session_segments(layout, system),
         separator,
     )
     return LaunchCommand(
@@ -332,10 +333,11 @@ def _prepare_launch(
     launched = _apply_direction(direction, layout, cache_dir)
     pending.write_text("pending\n", encoding="utf-8")
     sync_profile(layout.data, portable_data_dir(cache_dir))
-    set_interpreter(
-        portable_data_dir(cache_dir) / "user-data" / "User" / "settings.json",
-        interpreter_path(layout, system),
-    )
+    settings = portable_data_dir(cache_dir) / "user-data" / "User" / "settings.json"
+    set_interpreter(settings, interpreter_path(layout, system))
+    executable = git_executable(layout.git, system)
+    if executable.is_file():
+        set_git_path(settings, executable)
     return launched
 
 
@@ -349,7 +351,7 @@ def _open_session(
     pid: int,
 ) -> tuple[SessionRecord, _SessionWatch] | Failure:
     separator = separator_for(system)
-    added = prepend_user_path(hooks.store, python_segments(layout, system), separator)
+    added = prepend_user_path(hooks.store, session_segments(layout, system), separator)
     profile = portable_data_dir(cache_dir) / "dot-cursor"
     home = plan_home_link(
         dot_cursor,

@@ -2,9 +2,9 @@
 
 Cursor Portable downloads the official Cursor IDE, the CLI, or both on your computer and copies that build onto a removable drive.
 
-This repository does not contain Cursor. The wizard downloads a relocatable CPython 3.14 with pip onto the drive and copies this tool there. The drive is for the person who created it, under that person's own Cursor account. This tool does not protect sign-in tokens. Windows may bind them to the account that created them, and another computer may have to sign in again.
+This repository does not contain Cursor. The wizard downloads a relocatable CPython 3.14 with pip and a relocatable Git onto the drive and copies this tool there. The drive is for the person who created it, under that person's own Cursor account. This tool does not protect sign-in tokens. Windows may bind them to the account that created them, and another computer may have to sign in again.
 
-The drive uses NTFS on Windows, APFS on macOS, and ext4 on Linux. It keeps that system's Cursor build, the relocatable CPython, and one launcher.
+The drive uses NTFS on Windows, APFS on macOS, and ext4 on Linux. It keeps that system's Cursor build, the relocatable CPython, the relocatable Git, and one launcher.
 
 ## **Install** (Python 3.11-3.15)
 ```

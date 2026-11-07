@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Install portable CPython on a loop volume and check pip and uv.
+"""Install portable CPython and Git on a loop volume and check pip and uv.
 
 This process runs inside the Linux image. It downloads the relocatable
-interpreter, prepends it for one stub Cursor session, and checks that the
-container's pip and uv are unchanged afterwards.
+interpreter and Git, prepends them for one stub Cursor session, and checks
+that the container's pip and uv are unchanged afterwards.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from cursor_portable.repack.layout import StickLayout
 LOGGER = logging.getLogger("docker_session")
 _HOST_PIP = "/usr/local/bin/pip"
 _HOST_UV = "/usr/local/bin/uv"
-_WHICH_ORDER = ("python", "pip", "uv")
+_WHICH_ORDER = ("python", "pip", "uv", "git")
 _WHICH_NAMES = frozenset(_WHICH_ORDER)
 _RC_NAMES = (".profile", ".bashrc")
 _IMAGE = Path(tempfile.gettempdir()) / "cursor-portable-stick.img"
@@ -116,6 +116,10 @@ def _exercise(
     if problem is not None:
         LOGGER.error("%s", problem)
         return 1
+    git_file = layout.git / "bin" / "git"
+    if not git_file.is_file():
+        LOGGER.error("The stick Git is missing at %s", git_file)
+        return 1
     _write_stub(layout.app)
     code = _run_launch(home, layout, before_files)
     if code != 0:
@@ -144,7 +148,11 @@ def _finish(
     if not interpreter.is_file():
         LOGGER.error("The stick interpreter was removed from %s", interpreter)
         return 1
-    LOGGER.info("Host pip and uv match the snapshot. The stick Python remains.")
+    git_file = layout.git / "bin" / "git"
+    if not git_file.is_file():
+        LOGGER.error("The stick Git was removed from %s", git_file)
+        return 1
+    LOGGER.info("Host pip and uv match the snapshot. The stick Python and Git remain.")
     return 0
 
 
@@ -254,7 +262,7 @@ def _observe_session(
         return 1
     if not _block_state(home, present=True):
         return 1
-    problem = _expect_session_paths(layout.python / "bin")
+    problem = _expect_session_paths(layout.python / "bin", layout.git / "bin")
     if problem is not None:
         LOGGER.error("%s", problem)
         return 1
@@ -354,16 +362,19 @@ def _expect_host_tools(found: dict[str, str]) -> str | None:
     return None
 
 
-def _expect_session_paths(bin_dir: Path) -> str | None:
+def _expect_session_paths(python_bin: Path, git_bin: Path) -> str | None:
     python = _login_which("python")
     pip = _login_which("pip")
     uv = _login_which("uv")
-    if not _on_stick(python, bin_dir):
+    git = _login_which("git")
+    if not _on_stick(python, python_bin):
         return f"python resolved to {python or '(absent)'}"
-    if not _on_stick(pip, bin_dir):
+    if not _on_stick(pip, python_bin):
         return f"pip resolved to {pip or '(absent)'}"
     if uv != _HOST_UV:
         return f"uv resolved to {uv or '(absent)'}"
+    if not _on_stick(git, git_bin):
+        return f"git resolved to {git or '(absent)'}"
     return None
 
 

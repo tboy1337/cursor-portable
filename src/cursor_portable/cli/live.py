@@ -156,6 +156,7 @@ def install_payload(
         python_source=opened / "python" if (opened / "python").is_dir() else None,
         cli_source=opened / "cli" if (opened / "cli").is_dir() else None,
         tool_source=opened / "tool" if (opened / "tool").is_dir() else None,
+        git_source=opened / "git" if (opened / "git").is_dir() else None,
         progress=progress,
     )
 

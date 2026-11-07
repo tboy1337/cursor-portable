@@ -178,6 +178,24 @@ def test_acquire_payload_without_network(tmp_path: Path, monkeypatch: object) ->
                 }
             ).encode("utf-8")
             return HttpResponse(status=200, url=url, body=body, headers={})
+        if "git-for-windows" in url:
+            body = json.dumps(
+                {
+                    "assets": [
+                        {
+                            "name": "MinGit-2.56.0.4-64-bit.zip",
+                            "browser_download_url": "https://example.invalid/MinGit.zip",
+                            "digest": "sha256:" + ("cd" * 32),
+                        },
+                        {
+                            "name": "MinGit-2.56.0.4-busybox-64-bit.zip",
+                            "browser_download_url": "https://example.invalid/busybox.zip",
+                            "digest": "sha256:" + ("ef" * 32),
+                        },
+                    ]
+                }
+            ).encode("utf-8")
+            return HttpResponse(status=200, url=url, body=body, headers={})
         if "install" in url:
             return HttpResponse(
                 status=200,
@@ -201,6 +219,10 @@ def test_acquire_payload_without_network(tmp_path: Path, monkeypatch: object) ->
         if destination.name == "cli-archive":
             with zipfile.ZipFile(destination, "w") as handle:
                 handle.writestr("cursor.exe", b"cli")
+            return
+        if destination.name.startswith("MinGit-"):
+            with zipfile.ZipFile(destination, "w") as handle:
+                handle.writestr("cmd/git.exe", b"git")
             return
         destination.write_bytes(b"installer")
 
@@ -245,6 +267,7 @@ def test_acquire_payload_without_network(tmp_path: Path, monkeypatch: object) ->
     assert ready is None
     assert (tmp_path / "payload" / "ide-user" / "Cursor.exe").is_file()
     assert (tmp_path / "payload" / "python" / "python.exe").is_file()
+    assert (tmp_path / "payload" / "git" / "cmd" / "git.exe").read_bytes() == b"git"
     assert (tmp_path / "payload" / "cli" / "cursor.exe").is_file()
     assert (tmp_path / "payload" / "tool" / "cursor_portable" / "__init__.py").is_file()
     assert messages
@@ -495,6 +518,7 @@ def test_acquire_reports_each_download_failure(
     patch(acquire, "host_arch", lambda: "x64")
     patch(acquire, "copy_tool_package", lambda _path: None)
     patch(acquire, "ensure_python", lambda *_args, **_kwargs: None)
+    patch(acquire, "ensure_git", lambda *_args, **_kwargs: None)
     patch(
         acquire,
         "ensure_ide",
@@ -759,6 +783,7 @@ def test_install_steps_replace_partial_trees(
         Failure,
     )
     patch(acquire, "ensure_python", lambda *_args, **_kwargs: None)
+    patch(acquire, "ensure_git", lambda *_args, **_kwargs: None)
     patch(acquire, "ensure_ide", lambda *_args, **_kwargs: None)
     assert (
         acquire.acquire_payload(choices, HostSystem.WINDOWS, tmp_path / "three") is None
