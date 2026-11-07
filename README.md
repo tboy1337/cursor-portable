@@ -6,49 +6,14 @@ This repository does not contain Cursor. The wizard downloads a relocatable CPyt
 
 The drive uses NTFS on Windows, APFS on macOS, and ext4 on Linux. It keeps that system's Cursor build, the relocatable CPython, and one launcher.
 
-## From PyPI
-
-The package needs Python 3.11 through 3.15.
-
-```bash
-python -m pip install cursor-portable
+## **Install** (Python 3.11-3.15)
+```
+pip install cursor-portable
 python -m cursor_portable
 ```
 
-## From this repository
-
-The package needs Python 3.11 through 3.15. `uv sync` or `python -m pip install .` installs it. The wizard uses tkinter from that Python.
-
-```bash
-uv sync
-uv run python -m cursor_portable
-```
-
-```bash
-python -m pip install .
-python -m cursor_portable
-```
-
-The dev extra and `uv run python scripts/verify.py` are described in [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Wizard
-
-The wizard opens on the drive page. The Back button changes the choices already filled in:
-
-- IDE and CLI
-- this operating system and this CPU
-- the Windows user build, on a Windows target
-- a copy of this computer's profile, when the target system is this computer
-
-A different target system starts with an empty profile. When exactly one removable drive can be used, the wizard selects it. A drive that needs formatting still requires its current label to be typed. Typing `E:` or `E:\` confirms a drive with no label. Formatting erases the drive. A read-only mount, the system disk, and non-removable disks are refused.
-
-Re-running the setup updates the portable install. An existing portable profile on the drive is kept unless the wizard is set to a fresh profile. A fresh profile removes the portable user data, extensions, and `.cursor` profile on the drive.
-
-## Launcher
-
-The wizard writes one launcher into `CursorPortable/` on the drive. On Windows that file is `CursorPortable.cmd`. Starting it closes the command window immediately, and the launcher keeps running, with no window of its own, until Cursor exits. `CursorPortable.cmd --console`, or `CURSOR_PORTABLE_CONSOLE=1`, keeps the console attached and shows its exit code. On macOS or Linux the launcher is `cursor-portable`.
-
-The launcher copies the application to a local cache for that drive and points `~/.cursor` at the portable profile for the session. The portable Python is prepended on the Windows user PATH. On macOS it is prepended in `~/.zprofile`, `~/.zshrc`, and `~/.profile`. On Linux it is prepended in `~/.profile` and `~/.bashrc`. PATH and `~/.cursor` are restored when Cursor exits.
+## **Launching**
+One launcher lives on the drive (`CursorPortable.cmd` on Windows, `cursor-portable` on macOS/Linux). It runs Cursor from a local cache, points `~/.cursor` at the portable profile for the session, and restores your PATH and `~/.cursor` when Cursor exits.
 
 ## Host cleanup
 
@@ -56,10 +21,17 @@ Uninstall removes the cache, the PATH entry, and the shortcuts this tool created
 
 Use the Uninstall button in the setup window. After `uv sync`, run `uv run python -m cursor_portable uninstall`. After `python -m pip install .`, run `python -m cursor_portable uninstall`.
 
+## **Safety bits**
+• The drive picker refuses the system disk, non-removable disks and read-only mounts
+• Formatting makes you type the drive's label first
+• `python -m cursor_portable uninstall` removes the host cache, PATH entry and shortcuts and leaves the drive alone
+
+## **Heads up:** the repo doesn't contain Cursor itself (the wizard downloads the official build), and sign-in tokens aren't protected, so use the drive under your own account.
+
 ## Layout
 
 The drive layout, profile copy, and in-app update are in [docs/portable-cursor.md](docs/portable-cursor.md). Module boundaries are in [docs/Architecture.md](docs/Architecture.md).
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE)
