@@ -22,6 +22,16 @@ The launcher copies the application and the portable profile to an internal cach
 
 Double-clicking `CursorPortable.cmd`, or starting the Cursor Portable shortcut, does not leave a command window open. The launcher keeps running with no window until Cursor exits, then copies the profile back and restores PATH and `~/.cursor`. Closing a command window cannot end that session. `CursorPortable.cmd --console`, or `CURSOR_PORTABLE_CONSOLE=1`, keeps the console attached and shows its exit code.
 
+## Python, pip, and uv
+
+The stick's `python/` directory is a relocatable CPython 3.14 build from python-build-standalone. That build includes pip: `python.exe` and `Scripts\pip.exe` on Windows, and `bin/python3`, `bin/pip`, and `bin/pip3` on macOS and Linux. The launcher imports this package from `tool/` through `PYTHONPATH`. uv and the Windows `py` launcher stay the copies already installed on the computer.
+
+While Cursor is open, the stick interpreter is prepended on PATH when that exact directory is not already present. Windows prepends the interpreter directory and `Scripts` on the user PATH. macOS prepends `bin` in `.zprofile`, `.zshrc`, and `.profile`. Linux prepends `bin` in `.profile` and `.bashrc`. The Cursor process receives the same PATH immediately. A new shell then finds the stick's `python` and `pip` first, so `pip install` writes into the stick's site-packages and those packages remain on the drive. Directories that were already on PATH, including an existing pip and uv, stay behind that entry. `uv` remains that existing binary. `py` continues to start the registered CPython. A terminal that is already open keeps the PATH it started with.
+
+When Cursor exits, the directories added for that session are removed. A directory that was already on PATH stays where it was. Uninstall removes the host cache, that PATH entry, and the shortcuts this tool created. The stick is left as it is.
+
+An opt-in Linux container checks this PATH behavior. See [docker-session.md](docker-session.md).
+
 ## Settings copy
 
 A fresh install removes the portable user data, extensions, and `.cursor` profile on the drive, then creates empty data directories. A copy reads the allowlisted folders from this computer and skips chat databases while Cursor is open. `state.vscdb.backup` is skipped unless a caller asks for it. Inno Setup uninstallers are not copied.
