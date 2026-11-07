@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+import gc
 import os
 from pathlib import Path
 import sys
@@ -75,6 +76,7 @@ def make_wizard() -> Iterator[Callable[[WizardCallbacks], SetupWizard]]:
     for wizard in created:
         if wizard_window._window_open(wizard):
             wizard.destroy()
+    gc.collect()
 
 
 def test_linux_wizard_skips_scope(
@@ -426,6 +428,25 @@ def test_run_skips_the_loop_when_the_window_is_already_gone(
     monkeypatch.setattr(wizard, "mainloop", fail)
     assert wizard.run() == 0
     wizard.destroy()
+
+
+def test_wizard_retries_when_tk_cannot_find_its_library(
+    make_wizard: Callable[[WizardCallbacks], SetupWizard],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = {"count": 0}
+    real_init = wizard_window.tk.Tk.__init__
+
+    def flaky(self: object, *args: object, **kwargs: object) -> None:
+        started["count"] += 1
+        if started["count"] == 1:
+            raise wizard_window.tk.TclError("Can't find a usable tk.tcl")
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(wizard_window.tk.Tk, "__init__", flaky)
+    wizard = make_wizard(_callbacks(HostSystem.WINDOWS))
+    assert started["count"] == 2
+    assert _at(wizard, WizardStep.PRODUCT)
 
 
 def test_run_wizard_accepts_a_closed_window(monkeypatch: pytest.MonkeyPatch) -> None:

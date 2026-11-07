@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+import gc
 import logging
 import tkinter as tk
 from tkinter import messagebox
@@ -605,7 +606,14 @@ class SetupWizard(tk.Tk):
     """Collect choices and call the install callback."""
 
     def __init__(self, callbacks: WizardCallbacks) -> None:
-        super().__init__()
+        # Destroying one root and opening another can fail while the first
+        # interpreter still holds the Tk library files. Collect it and retry.
+        try:
+            super().__init__()
+        except tk.TclError as exc:
+            LOGGER.warning("Tk failed to start (%s); retrying", exc)
+            gc.collect()
+            super().__init__()
         self.withdraw()
         self.title(_TITLE)
         self.minsize(560, 460)
@@ -892,6 +900,7 @@ def run_wizard(callbacks: WizardCallbacks) -> int:
     finally:
         if _window_open(wizard):
             wizard.destroy()
+        gc.collect()
     if accepted:
         return 0
     return 1
