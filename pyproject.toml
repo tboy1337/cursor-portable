@@ -13,15 +13,18 @@ license-files = [ "LICENSE" ]
 authors = [ { name = "tboy1337" } ]
 requires-python = ">=3.11,<3.16"
 classifiers = [
-  "Environment :: Win32 (MS Windows)",
+  "Intended Audience :: End Users/Desktop",
   "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: 3.15",
+  "Topic :: System :: Installation/Setup",
   "Typing :: Typed",
 ]
 optional-dependencies.dev = [
